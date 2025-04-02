@@ -21,3 +21,7 @@ rotated_test/
 .DS_Store
 .idea/
 .vscode/
+
+# unsloth
+unsloth_compiled_cache/
+unsloth_cache/
