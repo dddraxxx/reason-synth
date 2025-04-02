@@ -1,0 +1,22 @@
+{
+  "shape_types": ["triangle", "square", "circle"],
+  "sizes": ["big", "small"],
+  "colors": {
+    "red": [255, 0, 0],
+    "green": [0, 255, 0],
+    "blue": [0, 0, 255],
+    "yellow": [255, 255, 0],
+    "purple": [128, 0, 128],
+    "orange": [255, 165, 0]
+  },
+  "styles": ["solid", "half", "border"],
+  "size_params": {
+    "big": 80,
+    "small": 40
+  },
+  "rotation_ranges": {
+    "triangle": [0, 360],
+    "square": [0, 360],
+    "circle": [0, 0]
+  }
+}
