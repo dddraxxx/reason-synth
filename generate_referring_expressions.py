@@ -57,6 +57,7 @@ class ReferringExpressionGenerator:
         self.max_rows, self.max_cols = max_grid_size
         self.dfs_templates = []
         self.bfs_templates = []
+        self.bfs_template_patterns = {}
         self._initialize_templates()
 
     def _initialize_templates(self):
@@ -75,63 +76,82 @@ class ReferringExpressionGenerator:
             "the shape in the {ordinal_row} row from the top, {ordinal_col} column from the left",
             "the shape in the {ordinal_row} row, {ordinal_col} spot"
         ]
-        # BFS (attribute-based) templates as referring expressions
-        self.bfs_templates = [
+
+        # BFS templates organized by attribute patterns
+        self.bfs_template_patterns = {
             # Single attribute templates
-            "the {shape_type}",
-            "the {color} object",
-            "the {size} shape",
-            "the {style_desc} object",
+            "shape_only": ["the {shape_type}"],
+            "color_only": ["the {color} object", "the {color} shape"],
+            "size_only": ["the {size} shape", "the {size} object"],
+            "style_only": ["the {style_desc} object", "the {style_desc} shape"],
 
             # Two attribute combinations
-            "the {color} {shape_type}",
-            "the {size} {shape_type}",
-            "the {style_desc} {shape_type}",
-            "the {color} {size} object",
-            "the {color} {style_desc} shape",
-            "the {size} {style_desc} object",
+            "shape_color": ["the {color} {shape_type}"],
+            "shape_size": ["the {size} {shape_type}"],
+            "shape_style": ["the {style_desc} {shape_type}"],
+            "color_size": ["the {color} {size} object", "the {size} {color} shape"],
+            "color_style": ["the {color} {style_desc} shape", "the {style_desc} {color} object"],
+            "size_style": ["the {size} {style_desc} object", "the {style_desc} {size} shape"],
 
             # Three attribute combinations
-            "the {size} {color} {shape_type}",
-            "the {color} {style_desc} {shape_type}",
-            "the {size} {style_desc} {shape_type}",
-            "the {size} {color} {style_desc} object",
+            "shape_color_size": ["the {size} {color} {shape_type}", "the {color} {size} {shape_type}"],
+            "shape_color_style": ["the {color} {style_desc} {shape_type}", "the {style_desc} {color} {shape_type}"],
+            "shape_size_style": ["the {size} {style_desc} {shape_type}", "the {style_desc} {size} {shape_type}"],
+            "color_size_style": ["the {size} {color} {style_desc} object", "the {color} {style_desc} {size} shape"],
 
-            # Four attribute combination (all attributes)
-            "the {size} {color} {style_desc} {shape_type}",
+            # All attributes
+            "all_attributes": ["the {size} {color} {style_desc} {shape_type}"],
 
             # Style-specific templates (solid)
-            "the completely filled {color} {shape_type}",
-            "the solid {color} {size} shape",
-            "the uniform {color} {shape_type}",
-            "the {size} {shape_type} filled with {color}",
+            "solid_style": [
+                "the completely filled {color} {shape_type}",
+                "the solid {color} {size} shape",
+                "the uniform {color} {shape_type}",
+                "the {size} {shape_type} filled with {color}"
+            ],
 
             # Style-specific templates (half)
-            "the object that's half {color1} and half {color2}",
-            "the {shape_type} that's split between {color1} and {color2}",
-            "the {size} shape that's divided into {color1} and {color2} parts",
-            "the {size} {shape_type} that has both {color1} and {color2} in it",
-            "the two-toned {size} {shape_type}",
-            "the half-and-half {color1} and {color2} {shape_type}",
+            "half_style": [
+                "the object that's half {color1} and half {color2}",
+                "the {shape_type} that's split between {color1} and {color2}",
+                "the {size} shape that's divided into {color1} and {color2} parts",
+                "the {size} {shape_type} that has both {color1} and {color2} in it",
+                "the two-toned {size} {shape_type}",
+                "the half-and-half {color1} and {color2} {shape_type}"
+            ],
 
             # Style-specific templates (border)
-            "the object with a {color} outline",
-            "the {shape_type} that has a {color} border around it",
-            "the {size} {shape_type} outlined in {color}",
-            "the {color1} {shape_type} that has a {color2} border around it",
-            "the framed {color} {shape_type}",
-            "the {size} {shape_type} with a {color} edge",
+            "border_style": [
+                "the object with a {color} outline",
+                "the {shape_type} that has a {color} border around it",
+                "the {size} {shape_type} outlined in {color}",
+                "the {color1} {shape_type} that has a {color2} border around it",
+                "the framed {color} {shape_type}",
+                "the {size} {shape_type} with a {color} edge"
+            ],
 
-            # Multiple objects (keep "all" for these)
-            "all {color} objects",
-            "all {size} {shape_type}s",
-            "all {style_desc} objects",
-            "all {color} {size} shapes",
-            "all {color} {style_desc} objects",
-            "all {size} {style_desc} shapes",
-            "all {shape_type}s that are either {color1} or {color2}",
-            "all {shape_type}s with {color} in them"
-        ]
+            # Multiple objects
+            "multiple_objects": [
+                "all {color} objects",
+                "all {size} {shape_type}s",
+                "all {style_desc} objects",
+                "all {color} {size} shapes",
+                "all {color} {style_desc} objects",
+                "all {size} {style_desc} shapes",
+                "all {shape_type}s that are either {color1} or {color2}",
+                "all {shape_type}s with {color} in them"
+            ],
+
+            # Comprehensive combinations (handled by function)
+            "comprehensive": None  # Will use generate_all_attribute_combinations
+        }
+
+        # Flatten templates for backward compatibility
+        self.bfs_templates = []
+        for key, templates in self.bfs_template_patterns.items():
+            if templates:  # Skip the None value for "comprehensive"
+                self.bfs_templates.extend(templates)
+
     def generate_dfs_referring_expressions(self, n: int = 10) -> List[str]:
         """
         Generate a specified number of DFS (position-based) referring expressions.
@@ -161,7 +181,8 @@ class ReferringExpressionGenerator:
             referring_expressions.append(referring_expression)
 
         return referring_expressions
-    def generate_bfs_referring_expressions(self, n: int = 10) -> List[str]:
+
+    def generate_bfs_referring_expressions(self, n: int = 10, comprehensive_ratio: float = 0.15) -> List[str]:
         """
         Generate a specified number of BFS (attribute-based) referring expressions.
         Args:
@@ -176,59 +197,102 @@ class ReferringExpressionGenerator:
         size_shape_combos = list(itertools.product(SIZES, SHAPE_TYPES))
         color_pairs = list(itertools.combinations(COLORS, 2))
 
-        for _ in range(n):
-            template = random.choice(self.bfs_templates)
+        # Get list of all pattern keys (excluding "comprehensive")
+        pattern_keys = [key for key in self.bfs_template_patterns.keys() if key != "comprehensive"]
 
-            # Select random attributes
-            shape_type = random.choice(SHAPE_TYPES)
-            color = random.choice(COLORS)
-            size = random.choice(SIZES)
-            style = random.choice(STYLES)
+        # Allocate some expressions for comprehensive combinations
+        num_comprehensive = max(1, int(n * comprehensive_ratio))
+        num_from_patterns = n - num_comprehensive
 
-            # Get a natural description for the selected style
-            if style in STYLE_DESCRIPTIONS:
-                style_desc = random.choice(STYLE_DESCRIPTIONS[style])
-            else:
-                style_desc = style  # Fallback
+        # First, add comprehensive combinations
+        if num_comprehensive > 0:
+            all_combinations = self.generate_all_attribute_combinations()
+            comprehensive_samples = random.sample(all_combinations, min(num_comprehensive, len(all_combinations)))
+            referring_expressions.extend(comprehensive_samples)
 
-            # For "half" style templates that need two colors
-            if any(phrase in template for phrase in ["half {color1} and half {color2}", "split between {color1} and {color2}",
-                                                    "divided into {color1} and {color2}", "both {color1} and {color2}",
-                                                    "half-and-half {color1} and {color2}"]):
-                color1, color2 = random.choice(color_pairs)
-                referring_expression = template.format(
-                    shape_type=shape_type,
-                    size=size,
-                    color1=color1,
-                    color2=color2,
-                    style_desc=style_desc
-                )
-            # For "border" style templates
-            elif any(phrase in template for phrase in ["outline", "border", "outlined", "framed", "edge"]):
-                color1 = random.choice(COLORS)
-                color2 = random.choice([c for c in COLORS if c != color1])
-                referring_expression = template.format(
-                    shape_type=shape_type,
-                    size=size,
-                    color=color,
-                    color1=color1,
-                    color2=color2,
-                    style_desc=style_desc
-                )
-            # For other templates (standard attribute templates)
-            else:
-                referring_expression = template.format(
-                    shape_type=shape_type,
-                    color=color,
-                    size=size,
-                    style_desc=style_desc.format(color=color) if "{color}" in style_desc else style_desc,
-                    color1=random.choice(COLORS),
-                    color2=random.choice([c for c in COLORS if c != color])
-                )
+        # Then, add expressions from patterns
+        if num_from_patterns > 0:
+            # Distribute expressions across pattern types
+            patterns_per_category = {}
+            remaining = num_from_patterns
 
-            referring_expressions.append(referring_expression)
+            # First pass: ensure at least one of each pattern if possible
+            for key in pattern_keys:
+                if remaining > 0:
+                    patterns_per_category[key] = 1
+                    remaining -= 1
+                else:
+                    patterns_per_category[key] = 0
 
-        return referring_expressions
+            # Second pass: distribute remaining expressions proportionally
+            if remaining > 0:
+                for _ in range(remaining):
+                    key = random.choice(pattern_keys)
+                    patterns_per_category[key] += 1
+
+            # Generate expressions based on the distribution
+            for key, count in patterns_per_category.items():
+                if count == 0:
+                    continue
+
+                templates = self.bfs_template_patterns[key]
+
+                for _ in range(count):
+                    template = random.choice(templates)
+
+                    # Select random attributes
+                    shape_type = random.choice(SHAPE_TYPES)
+                    color = random.choice(COLORS)
+                    size = random.choice(SIZES)
+                    style = random.choice(STYLES)
+
+                    # Get a natural description for the selected style
+                    if style in STYLE_DESCRIPTIONS:
+                        style_desc = random.choice(STYLE_DESCRIPTIONS[style])
+                    else:
+                        style_desc = style  # Fallback
+
+                    # For "half_style" templates that need two colors
+                    if key == "half_style":
+                        color1, color2 = random.choice(color_pairs)
+                        referring_expression = template.format(
+                            shape_type=shape_type,
+                            size=size,
+                            color1=color1,
+                            color2=color2,
+                            style_desc=style_desc
+                        )
+                    # For "border_style" templates
+                    elif key == "border_style":
+                        color1 = random.choice(COLORS)
+                        color2 = random.choice([c for c in COLORS if c != color1])
+                        referring_expression = template.format(
+                            shape_type=shape_type,
+                            size=size,
+                            color=color,
+                            color1=color1,
+                            color2=color2,
+                            style_desc=style_desc
+                        )
+                    # For other templates (standard attribute templates)
+                    else:
+                        referring_expression = template.format(
+                            shape_type=shape_type,
+                            color=color,
+                            size=size,
+                            style_desc=style_desc.format(color=color) if "{color}" in style_desc else style_desc,
+                            color1=random.choice(COLORS),
+                            color2=random.choice([c for c in COLORS if c != color])
+                        )
+
+                    referring_expressions.append(referring_expression)
+
+        # Shuffle the results to mix comprehensive and pattern-based expressions
+        random.shuffle(referring_expressions)
+
+        # Return only the requested number
+        return referring_expressions[:n]
+
     def generate_all_attribute_combinations(self) -> List[str]:
         """
         Generate referring expressions covering all possible attribute combinations.
@@ -291,6 +355,16 @@ def main():
     print(f"\nTotal templates generated:")
     print(f"- DFS referring expression templates: {len(generator.dfs_templates)}")
     print(f"- BFS referring expression templates: {len(generator.bfs_templates)}")
+    print(f"- BFS template patterns: {len(generator.bfs_template_patterns)}")
     print(f"- All attribute combinations: {len(all_combinations)}")
+
+    # Print the distribution of templates by pattern
+    print("\nBFS Template Pattern Distribution:")
+    for key, templates in generator.bfs_template_patterns.items():
+        if templates:
+            print(f"- {key}: {len(templates)} templates")
+        else:
+            print(f"- {key}: Using function")
+
 if __name__ == "__main__":
     main()
