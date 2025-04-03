@@ -7,6 +7,8 @@ IMPORTANT REQUIREMENTS:
 2. Avoid technical terminology like coordinates (x,y)
 3. Use specific descriptive language for styles instead of generic "style" terms
 4. Prompts should be diverse and cover various ways to ask about objects
+5. Use referring expressions that uniquely identify objects
+6. Remove question phrases like "find" or "where is" - just keep the expression itself
 """
 
 import json
@@ -51,73 +53,73 @@ class PromptGenerator:
 
     def _initialize_templates(self):
         """Initialize all templates for both DFS and BFS prompts."""
-        # DFS (position-based) templates with more natural language
+        # DFS (position-based) templates as referring expressions
         self.dfs_templates = [
-            "What's in the {row_num} row, {col_num} column?",
-            "Tell me about the object in the {ordinal_row} row, {ordinal_col} column.",
-            "What is the {ordinal_col} object from the left in the {ordinal_row} row from the top?",
-            "What color is the object located in the {ordinal_row} row, {ordinal_col} position?",
-            "What shape can you see in the {ordinal_row} row at position {ordinal_col}?",
-            "How big is the object in the {ordinal_row} row and {ordinal_col} column?",
-            "Describe the appearance of the shape in the {row_num} row, {col_num} column.",
-            "What type of shape is in the {ordinal_row} row at the {ordinal_col} spot?",
-            "How many objects come before the one in the {ordinal_row} row, {ordinal_col} column?",
-            "What is the object made of in the {ordinal_row} row from the top, {ordinal_col} column from the left?",
-            "What can you tell me about the shape that's in the {ordinal_row} row, {ordinal_col} spot?"
+            "the object in the {row_num} row, {col_num} column",
+            "the object in the {ordinal_row} row, {ordinal_col} column",
+            "the {ordinal_col} object from the left in the {ordinal_row} row from the top",
+            "the object located in the {ordinal_row} row, {ordinal_col} position",
+            "the shape in the {ordinal_row} row at position {ordinal_col}",
+            "the object in the {ordinal_row} row and {ordinal_col} column",
+            "the shape in the {row_num} row, {col_num} column",
+            "the shape in the {ordinal_row} row at the {ordinal_col} spot",
+            "the object in the {ordinal_row} row, {ordinal_col} column",
+            "the shape in the {ordinal_row} row from the top, {ordinal_col} column from the left",
+            "the shape in the {ordinal_row} row, {ordinal_col} spot"
         ]
 
-        # BFS (attribute-based) templates with natural style descriptions
+        # BFS (attribute-based) templates as referring expressions
         self.bfs_templates = [
             # Single attribute templates
-            "Find the {shape_type} in the image.",
-            "Where is the {color} object?",
-            "Locate the {size} shape.",
-            "Which objects are completely filled with color?",
-            "Which objects are split into two colors?",
-            "Which objects have outlines or borders?",
+            "the {shape_type}",
+            "the {color} object",
+            "the {size} shape",
+            "the completely filled object",
+            "the object split into two colors",
+            "the object with an outline",
 
             # Two attribute combinations
-            "Find the {color} {shape_type}.",
-            "Where is the {size} {shape_type}?",
-            "Locate the {shape_type} that's completely filled with color.",
-            "Find the {shape_type} with an outline.",
-            "Where is the two-toned {shape_type}?",
-            "Find the {color} {size} object.",
-            "Where is the outlined {color} shape?",
-            "Locate the {size} object that's split into two colors.",
+            "the {color} {shape_type}",
+            "the {size} {shape_type}",
+            "the completely filled {shape_type}",
+            "the {shape_type} with an outline",
+            "the two-toned {shape_type}",
+            "the {color} {size} object",
+            "the outlined {color} shape",
+            "the {size} object that's split into two colors",
 
             # Three attribute combinations
-            "Find the {size} {color} {shape_type}.",
-            "Where is the {color} {shape_type} with an outline?",
-            "Locate the {size} {shape_type} that's split into two colors.",
-            "Find the two-toned {size} {shape_type}.",
-            "Where is the completely filled {size} {color} shape?",
+            "the {size} {color} {shape_type}",
+            "the {color} {shape_type} with an outline",
+            "the {size} {shape_type} that's split into two colors",
+            "the two-toned {size} {shape_type}",
+            "the completely filled {size} {color} shape",
 
             # Four attribute combination (all attributes)
-            "Find the {size} {color} {shape_type} with an outline.",
-            "Locate the {size} {color} {shape_type} that's completely filled.",
-            "Find the {size} {shape_type} that's split into {color1} and {color2}.",
+            "the {size} {color} {shape_type} with an outline",
+            "the completely filled {size} {color} {shape_type}",
+            "the {size} {shape_type} that's split into {color1} and {color2}",
 
             # Special templates for "half" style (two colors)
-            "Find the object that's half {color1} and half {color2}.",
-            "Where is the {shape_type} that's split between {color1} and {color2}?",
-            "Locate the {size} shape that's divided into {color1} and {color2} parts.",
-            "Find the {size} {shape_type} that has both {color1} and {color2} in it.",
+            "the object that's half {color1} and half {color2}",
+            "the {shape_type} that's split between {color1} and {color2}",
+            "the {size} shape that's divided into {color1} and {color2} parts",
+            "the {size} {shape_type} that has both {color1} and {color2} in it",
 
             # Special templates for "border" style
-            "Find the object with a {color} outline.",
-            "Where is the {shape_type} that has a {color} border around it?",
-            "Locate the {size} {shape_type} outlined in {color}.",
-            "Find the {color1} {shape_type} that has a {color2} border around it.",
+            "the object with a {color} outline",
+            "the {shape_type} that has a {color} border around it",
+            "the {size} {shape_type} outlined in {color}",
+            "the {color1} {shape_type} that has a {color2} border around it",
 
-            # Counting and set operations
-            "How many {color} objects are there?",
-            "Count the {size} {shape_type}s.",
-            "How many objects are filled completely with color?",
-            "How many shapes have outlines?",
-            "Count the two-toned objects.",
-            "Count the {shape_type}s that are either {color1} or {color2}.",
-            "How many {shape_type}s have {color} in them?"
+            # Multiple objects (keep "all" for these)
+            "all {color} objects",
+            "all {size} {shape_type}s",
+            "all completely filled objects",
+            "all objects with outlines",
+            "all two-toned objects",
+            "all {shape_type}s that are either {color1} or {color2}",
+            "all {shape_type}s with {color} in them"
         ]
 
     def generate_dfs_prompts(self, n: int = 10) -> List[str]:
@@ -225,51 +227,51 @@ class PromptGenerator:
 
         # Generate prompts for all shape types
         for shape in SHAPE_TYPES:
-            prompts.append(f"Find all the {shape}s in the image.")
+            prompts.append(f"all {shape}s in the image")
 
         # Generate prompts for all colors
         for color in COLORS:
-            prompts.append(f"Find all {color} objects in the image.")
+            prompts.append(f"all {color} objects in the image")
 
         # Generate prompts for all sizes
         for size in SIZES:
-            prompts.append(f"Find all {size} objects in the image.")
+            prompts.append(f"all {size} objects in the image")
 
         # Generate prompts for all styles using natural descriptions
-        prompts.append("Find all objects that are completely filled with color.")
-        prompts.append("Find all objects that are split into two colors.")
-        prompts.append("Find all objects that have outlines or borders.")
+        prompts.append("all objects that are completely filled with color")
+        prompts.append("all objects that are split into two colors")
+        prompts.append("all objects that have outlines or borders")
 
         # Generate prompts for all shape-color combinations
         for shape, color in itertools.product(SHAPE_TYPES, COLORS):
-            prompts.append(f"Find the {color} {shape}.")
+            prompts.append(f"the {color} {shape}")
 
         # Generate prompts for all size-shape combinations
         for size, shape in itertools.product(SIZES, SHAPE_TYPES):
-            prompts.append(f"Find the {size} {shape}.")
+            prompts.append(f"the {size} {shape}")
 
         # Generate prompts for all style-shape combinations with natural style descriptions
         for shape in SHAPE_TYPES:
-            prompts.append(f"Find the {shape} that's completely filled with color.")
-            prompts.append(f"Find the {shape} that's split into two colors.")
-            prompts.append(f"Find the {shape} that has an outline or border.")
+            prompts.append(f"the {shape} that's completely filled with color")
+            prompts.append(f"the {shape} that's split into two colors")
+            prompts.append(f"the {shape} that has an outline or border")
 
         # Generate special prompts for half style with all color combinations
         for color1, color2 in itertools.combinations(COLORS, 2):
-            prompts.append(f"Find the object that's half {color1} and half {color2}.")
+            prompts.append(f"the object that's half {color1} and half {color2}")
 
             # Add shape-specific half-color prompts
             for shape in SHAPE_TYPES:
-                prompts.append(f"Find the {shape} that's split between {color1} and {color2}.")
+                prompts.append(f"the {shape} that's split between {color1} and {color2}")
 
         # Generate special prompts for border style with all color combinations
         for main_color, border_color in itertools.product(COLORS, COLORS):
             if main_color != border_color:
-                prompts.append(f"Find the {main_color} object with a {border_color} outline.")
+                prompts.append(f"the {main_color} object with a {border_color} outline")
 
                 # Add shape-specific border prompts
                 for shape in SHAPE_TYPES:
-                    prompts.append(f"Find the {main_color} {shape} outlined in {border_color}.")
+                    prompts.append(f"the {main_color} {shape} outlined in {border_color}")
 
         return prompts
 
