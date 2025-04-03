@@ -47,6 +47,15 @@ ORDINALS = {
     1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
     6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth"
 }
+
+# Direction specifications
+DIRECTION_SPECS = {
+    "row_from_top": ["from the top", "counting from top to bottom", "starting from the top", "from the top down"],
+    "row_from_bottom": ["from the bottom", "counting from bottom to top", "starting from the bottom", "from the bottom up"],
+    "col_from_left": ["from the left", "counting from left to right", "starting from the left", "from left side"],
+    "col_from_right": ["from the right", "counting from right to left", "starting from the right", "from right side"]
+}
+
 class ReferringExpressionGenerator:
     def __init__(self, max_grid_size: Tuple[int, int] = (8, 7)):
         """
@@ -64,17 +73,37 @@ class ReferringExpressionGenerator:
         """Initialize all templates for both DFS and BFS referring expressions."""
         # DFS (position-based) templates as referring expressions
         self.dfs_templates = [
-            "the object in the {row_num} row, {col_num} column",
-            "the object in the {ordinal_row} row, {ordinal_col} column",
-            "the {ordinal_col} object from the left in the {ordinal_row} row from the top",
-            "the object located in the {ordinal_row} row, {ordinal_col} position",
-            "the shape in the {ordinal_row} row at position {ordinal_col}",
-            "the object in the {ordinal_row} row and {ordinal_col} column",
-            "the shape in the {row_num} row, {col_num} column",
-            "the shape in the {ordinal_row} row at the {ordinal_col} spot",
-            "the object in the {ordinal_row} row, {ordinal_col} column",
-            "the shape in the {ordinal_row} row from the top, {ordinal_col} column from the left",
-            "the shape in the {ordinal_row} row, {ordinal_col} spot"
+            # Standard templates with clear direction
+            "the object in the {row_num} row {row_dir}, {col_num} column {col_dir}",
+            "the object in the {ordinal_row} row {row_dir}, {ordinal_col} column {col_dir}",
+            "the {ordinal_col} object {col_dir} in the {ordinal_row} row {row_dir}",
+            "the object located in the {ordinal_row} row {row_dir}, {ordinal_col} position {col_dir}",
+            "the shape in the {ordinal_row} row {row_dir} at position {ordinal_col} {col_dir}",
+            "the object in the {ordinal_row} row {row_dir} and {ordinal_col} column {col_dir}",
+            "the shape in the {row_num} row {row_dir}, {col_num} column {col_dir}",
+            "the shape in the {ordinal_row} row {row_dir} at the {ordinal_col} spot {col_dir}",
+            "the shape in the {ordinal_row} row {row_dir}, {ordinal_col} spot {col_dir}",
+
+            # Different ordering of words
+            "the {ordinal_col} item {col_dir} on the {ordinal_row} row {row_dir}",
+            "on row {row_num} {row_dir}, the {col_num} object {col_dir}",
+            "row {row_num} {row_dir}, column {col_num} {col_dir}",
+            "{ordinal_col} from {col_alt_dir} on the {ordinal_row} row {row_dir}",
+            "{ordinal_row} row {row_dir}, {ordinal_col} column {col_dir} - that object",
+            "the {ordinal_col} shape {col_dir} of row {row_num} {row_dir}",
+
+            # More colloquial or alternative ways to describe positions
+            "the {ordinal_col} thing {col_dir} on the {ordinal_row} row {row_dir}",
+            "the object at {col_num} across {col_dir}, {row_num} down {row_dir}",
+            "the shape positioned {ordinal_col} {col_dir} in row number {row_num} {row_dir}",
+            "the thing in row {row_num} {row_dir}, spot {col_num} {col_dir}",
+            "the {ordinal_col} thing {col_dir} in the {ordinal_row} line {row_dir}",
+
+            # Directional counting
+            "starting from the {col_alt_dir}, the {ordinal_col} object in the {ordinal_row} row {row_dir}",
+            "counting from the {row_alt_dir}, the shape in row {ordinal_row}, column {ordinal_col} {col_dir}",
+            "if you start from the {col_alt_dir}, the {ordinal_col} shape in row {row_num} {row_dir}",
+            "the {ordinal_col} object when counting from {col_alt_dir} in the {ordinal_row} row {row_dir}"
         ]
 
         # BFS templates organized by attribute patterns
@@ -170,13 +199,23 @@ class ReferringExpressionGenerator:
             ordinal_row = ORDINALS.get(row, f"{row}th")
             ordinal_col = ORDINALS.get(col, f"{col}th")
 
+            # Select random direction specifications
+            row_dir = random.choice(DIRECTION_SPECS["row_from_top"])
+            row_alt_dir = random.choice(DIRECTION_SPECS["row_from_bottom"])
+            col_dir = random.choice(DIRECTION_SPECS["col_from_left"])
+            col_alt_dir = random.choice(DIRECTION_SPECS["col_from_right"])
+
             # Format the template
             referring_expression = template.format(
                 row=row, col=col,
                 row_num=f"{row}{'st' if row == 1 else 'nd' if row == 2 else 'rd' if row == 3 else 'th'}",
                 col_num=f"{col}{'st' if col == 1 else 'nd' if col == 2 else 'rd' if col == 3 else 'th'}",
                 ordinal_row=ordinal_row,
-                ordinal_col=ordinal_col
+                ordinal_col=ordinal_col,
+                row_dir=row_dir,
+                row_alt_dir=row_alt_dir,
+                col_dir=col_dir,
+                col_alt_dir=col_alt_dir
             )
             referring_expressions.append(referring_expression)
 
