@@ -132,7 +132,7 @@ class Shape:
 
         # Add a small buffer for border styles
         if self.style == "border":
-            buffer = 2
+            buffer = 3
             min_x -= buffer
             min_y -= buffer
             max_x += buffer
@@ -229,7 +229,7 @@ class Shape:
             draw._image.paste(result, (int(min_x), int(min_y)), result)
         elif self.style == "border":
             # Draw outline
-            draw.polygon(points, outline=COLORS[self.color2], fill=COLORS[self.color1], width=3)
+            draw.polygon(points, outline=COLORS[self.color2], fill=COLORS[self.color1], width=5)
 
     def _draw_square(self, draw: ImageDraw.ImageDraw) -> None:
         """Draw a square on the ImageDraw object."""
@@ -284,7 +284,7 @@ class Shape:
                 # Paste on main image
                 draw._image.paste(result, (int(min_x), int(min_y)), result)
             elif self.style == "border":
-                draw.polygon(points, outline=COLORS[self.color2], fill=COLORS[self.color1], width=3)
+                draw.polygon(points, outline=COLORS[self.color2], fill=COLORS[self.color1], width=5)
         else:
             # No rotation, use rectangle directly
             if self.style == "solid":
@@ -309,7 +309,7 @@ class Shape:
                 # Paste on main image
                 draw._image.paste(result, (left, top), result)
             elif self.style == "border":
-                draw.rectangle((left, top, right, bottom), outline=COLORS[self.color2], fill=COLORS[self.color1], width=3)
+                draw.rectangle((left, top, right, bottom), outline=COLORS[self.color2], fill=COLORS[self.color1], width=5)
 
     def _draw_circle(self, draw: ImageDraw.ImageDraw) -> None:
         """Draw a circle on the ImageDraw object."""
@@ -340,7 +340,7 @@ class Shape:
             image_x, image_y = left, top
             draw._image.paste(result, (image_x, image_y), result)
         elif self.style == "border":
-            draw.ellipse(self.bbox, outline=COLORS[self.color2], fill=COLORS[self.color1], width=3)
+            draw.ellipse(self.bbox, outline=COLORS[self.color2], fill=COLORS[self.color1], width=5)
 
     def to_dict(self) -> Dict:
         """Convert the shape object to a dictionary for annotation."""
