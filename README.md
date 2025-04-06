@@ -1,88 +1,124 @@
-# Synthetic Visual Data for Referring Expressions
+# Reason-Synth: Synthetic Visual Data for Referring Expressions
 
-Generate synthetic images with geometric shapes and annotations for visual reasoning and referring expression tasks.
+A toolkit for generating synthetic images with geometric shapes and creating referring expressions for visual reasoning tasks.
+
+## Overview
+
+Reason-Synth generates synthetic images containing geometric shapes with various attributes, along with natural language referring expressions that identify specific objects. These datasets are ideal for training and evaluating models for visual reasoning, grounding, and referring expression comprehension.
 
 ## Features
 
-- Various shapes (triangle, square, circle)
-- Shape properties (size, color, style, rotation)
-- Organized grid layouts with random region placement
-- Minimum spacing between objects (1/4 of smaller object's bbox)
-- Proper bounding box calculation for rotated shapes
-- Configurable grid sizes (2x2 up to 8x8)
-- JSONL format annotations
-- Referring expression generation (position-based and attribute-based)
+- **Synthetic Image Generation**:
+  - Various shapes (circle, triangle, square)
+  - Multiple attributes (size, color, style, position)
+  - Configurable grid layouts (from 2×2 to 8×8)
+  - Clean annotations in JSONL format
+
+- **Referring Expression Generation**:
+  - Position-based expressions (DFS): "the object in the second row, third column"
+  - Attribute-based expressions (BFS): "the large red triangle with a blue border"
+  - Control over expression distribution and attributes
+  - Support for "empty matches" (expressions that don't match any object)
+
+- **Visualization Tools**:
+  - Visualize expressions with highlighted target objects
+  - Generate combined visualizations for presentations
 
 ## Installation
 
 ```bash
-# Create virtual environment
-uv venv .venv
-source .venv/bin/activate
+# Clone the repository
+git clone https://github.com/your-username/reason-synth.git
+cd reason-synth
+
+# Set up environment
+python -m venv env
+source env/bin/activate  # On Windows: env\Scripts\activate
 
 # Install dependencies
-uv pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ## Quick Start
 
-Generate a gallery of shapes:
+Run the complete demo workflow:
+
 ```bash
-python generate_gallery.py
+python demo_workflow.py --output_dir demo_output --num_images 10
 ```
 
-Generate a small dataset with basic grids:
+This will:
+1. Generate 10 synthetic images with random shapes
+2. Create referring expressions (both position-based and attribute-based)
+3. Visualize the referring expressions with their target objects
+4. Generate statistics about the dataset
+
+## Customizing Expression Generation
+
+You can control various aspects of the generated expressions:
+
 ```bash
-python generate_samples.py --num-samples 4 --output-dir samples
+python demo_workflow.py \
+  --output_dir custom_demo \
+  --num_images 20 \
+  --min_grid 4 \
+  --max_grid 6 \
+  --sampling_dfs_ratio 0.6 \
+  --sampling_existence_ratio 0.6 \
+  --refexp_grid_min_row 1 \
+  --refexp_grid_min_col 1 \
+  --refexp_grid_max_row 5 \
+  --refexp_grid_max_col 5 \
+  --bfs_ratio_single_attr 0.3 \
+  --bfs_ratio_two_attr 0.4 \
+  --bfs_ratio_three_attr 0.2 \
+  --bfs_ratio_four_attr 0.1 \
+  --num_vis_samples 8
 ```
 
-Generate a dataset with larger, complex grids:
-```bash
-python generate_samples.py --num-samples 20 --output-dir complex_samples --min-grid 4 --max-grid 8
-```
+### Key Parameters:
 
-Generate referring expressions:
-```bash
-python generate_referring_expressions.py
-```
+- `sampling_dfs_ratio`: Controls the ratio of position-based (DFS) to attribute-based (BFS) expressions (0.6 = 60% DFS)
+- `sampling_existence_ratio`: Controls the ratio of existence-based vs. random-based expressions (0.6 = 60% existence-based)
+- `refexp_grid_min_row/col`, `refexp_grid_max_row/col`: Control the grid position range for DFS referring expressions
+- `bfs_ratio_*`: Controls the complexity distribution of attribute-based expressions
 
-Visualize an image with annotations:
-```bash
-python visualize.py --image samples/images/sample_0000.png --jsonl samples/annotations/dataset.jsonl --show-grid --show-bbox --show-region
-```
+## Understanding Referring Expressions
 
-## Project Structure
+### Position-Based (DFS) Expressions
 
-- `src/` - Core code for shape generation and scene composition
-- `samples/` - Sample image outputs and annotations
-- Generation scripts:
-  - `generate_samples.py` - Create datasets
-  - `generate_gallery.py` - Create shape galleries
-  - `generate_referring_expressions.py` - Create natural language referring expressions
-- `visualize.py` - Visualization tool
-- `DEVELOPMENT_GUIDE.md` - Detailed explanation of project components and concepts
+Position-based expressions refer to objects by their grid location. For example:
+- "the shape in the first row, third column"
+- "the object positioned second from the left in the last row"
 
-## Shape Styles
+### Attribute-Based (BFS) Expressions
 
-- **Solid**: Single color fill
-- **Half**: Two-color split (left/right)
-- **Border**: Main color with different border
+Attribute-based expressions refer to objects by their visual properties. For example:
+- "the blue circle"
+- "the small shape with a border"
+- "the large red triangle"
 
-## Grid Layouts
+### Expression Sources
 
-Objects are arranged in grid layouts with:
-- Configurable grid sizes (from 2x2 up to 8x8)
-- Random region placement in the image
-- Random offsets within each grid cell
-- Minimum distance between objects (1/4 of smaller object's bounding box)
-- Special handling for rotated shapes to maintain proper spacing
+The system generates BFS expressions in two ways:
+- **Existence-based**: Generated from attributes of objects that actually exist in the image
+- **Random-based**: Generated from random attribute combinations, which may or may not exist in the image
 
-## Referring Expressions
+Random-based expressions help create "empty match" cases where no objects match the expression, which is useful for training robust models.
 
-Two types of referring expressions are supported:
-- **Position-Based (DFS)**: Expressions that refer to objects by their position (e.g., "the shape in the third row, second column")
-- **Attribute-Based (BFS)**: Expressions that refer to objects by their visual properties (e.g., "the large red triangle")
+## Outputs
 
-## Examples
+After running the demo, you'll find:
+- `images/`: The generated synthetic images
+- `annotations/`:
+  - `dataset.jsonl`: Image and object annotations
+  - `referring_expressions.jsonl`: Generated referring expressions with matching objects
+- `visualizations/`: Visualizations of expressions and their targets
 
-![Gallery](gallery.png)
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

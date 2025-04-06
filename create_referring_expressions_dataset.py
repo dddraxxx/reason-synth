@@ -256,6 +256,10 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
                             min_grid=image_min_grid,
                             max_grid=image_max_grid
                         )
+                        # Add source field to track where expressions came from
+                        for expr in dfs_expressions:
+                            expr['source'] = 'random'
+
                         all_dfs_expressions.extend(dfs_expressions)
 
                     # Then, generate expressions from existing objects
@@ -281,6 +285,10 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
                                         min_grid=(row, col),
                                         max_grid=(row, col)
                                     )
+                                    # Add source field to track where expressions came from
+                                    for e in expr:
+                                        e['source'] = 'existence'
+
                                     all_dfs_expressions.extend(expr)
 
                     # Find matching objects for each DFS expression
@@ -327,6 +335,10 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
                             num_expressions=existence_count  # Directly specify the number of expressions to generate
                         )
 
+                        # Add source field to track where expressions came from
+                        for expr in existence_bfs:
+                            expr['source'] = 'existence'
+
                         if debug:
                             print(f"Generated {len(existence_bfs)} existence-based BFS expressions")
 
@@ -349,6 +361,10 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
                             bfs_ratio_four_attr=bfs_ratio_four_attr,
                             num_expressions=random_count  # Directly specify the number of expressions to generate
                         )
+
+                        # Add source field to track where expressions came from
+                        for expr in random_bfs:
+                            expr['source'] = 'random'
 
                         if debug:
                             print(f"Generated {len(random_bfs)} random-based BFS expressions from truly random attributes")
@@ -399,6 +415,10 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
                         'matching_objects': expr_data['matching_objects']
                     }
 
+                    # Preserve source field for BFS expressions if it exists
+                    if 'source' in expr_data:
+                        entry['source'] = expr_data['source']
+
                     # Write to output file
                     out_file.write(json.dumps(entry) + '\n')
                     total_expressions += 1
@@ -448,14 +468,14 @@ def main():
                         help="Maximum number of images to process (0 = use all)")
 
     # Add grid position parameters for DFS expressions
-    parser.add_argument("--grid_position_min_row", type=int, default=0,
-                        help="Minimum grid row for DFS expressions (0-indexed)")
-    parser.add_argument("--grid_position_min_col", type=int, default=0,
-                        help="Minimum grid column for DFS expressions (0-indexed)")
-    parser.add_argument("--grid_position_max_row", type=int, default=7,
-                        help="Maximum grid row for DFS expressions (0-indexed)")
-    parser.add_argument("--grid_position_max_col", type=int, default=7,
-                        help="Maximum grid column for DFS expressions (0-indexed)")
+    parser.add_argument("--refexp_grid_min_row", type=int, default=0,
+                        help="Minimum grid row for DFS referring expressions (0-indexed)")
+    parser.add_argument("--refexp_grid_min_col", type=int, default=0,
+                        help="Minimum grid column for DFS referring expressions (0-indexed)")
+    parser.add_argument("--refexp_grid_max_row", type=int, default=7,
+                        help="Maximum grid row for DFS referring expressions (0-indexed)")
+    parser.add_argument("--refexp_grid_max_col", type=int, default=7,
+                        help="Maximum grid column for DFS referring expressions (0-indexed)")
 
     # Add BFS pattern parameters
     parser.add_argument("--bfs_pattern_type", type=str, default="patterns", choices=["patterns", "all"],
@@ -475,8 +495,8 @@ def main():
     args = parser.parse_args()
 
     # Set grid range parameters for DFS
-    grid_position_min = (args.grid_position_min_row, args.grid_position_min_col)
-    grid_position_max = (args.grid_position_max_row, args.grid_position_max_col)
+    grid_position_min = (args.refexp_grid_min_row, args.refexp_grid_min_col)
+    grid_position_max = (args.refexp_grid_max_row, args.refexp_grid_max_col)
 
     print(f"Generating referring expressions dataset...")
     print(f"Input dataset: {args.input}")
