@@ -151,7 +151,7 @@ class BFSExpressionHandler:
                 ],
                 "half": [
                     self.template_with_requirements("the half and half object", "half"),
-                    self.template_with_requirements("the dual-colored object", "half")
+                    self.template_with_requirements("the equal-sized dual-colored object", "half")
                 ],
                 "border": [
                     self.template_with_requirements("the object with a border", "border"),
@@ -214,7 +214,7 @@ class BFSExpressionHandler:
                 ],
                 "half": [
                     self.template_with_requirements("the {size} object split half-half into two colors", "half"),
-                    self.template_with_requirements("the dual-colored {size} object", "half")
+                    self.template_with_requirements("the equal-sized dual-colored {size} object", "half")
                 ],
                 "border": [
                     self.template_with_requirements("the {size} object with a border", "border"),
@@ -251,7 +251,7 @@ class BFSExpressionHandler:
                 ],
                 "half": [
                     self.template_with_requirements("the {size} {shape_type} split half-half into two colors", "half"),
-                    self.template_with_requirements("the dual-colored {size} {shape_type}", "half")
+                    self.template_with_requirements("the equal-sized dual-colored {size} {shape_type}", "half")
                 ],
                 "border": [
                     self.template_with_requirements("the {size} {shape_type} with a border", "border"),

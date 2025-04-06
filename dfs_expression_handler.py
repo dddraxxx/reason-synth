@@ -108,6 +108,7 @@ class DFSExpressionHandler:
             ordinal_col = ORDINALS.get(display_col, f"{display_col}th")
 
             # Select direction specifications based on template requirements
+            row_dir = row_alt_dir = col_dir = col_alt_dir = "not defined"
             if "{row_dir}" in template:
                 row_dir = random.choice(DIRECTION_SPECS["row_from_top"])
                 row_dir_type = "row_from_top"
