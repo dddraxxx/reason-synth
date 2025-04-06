@@ -17,15 +17,6 @@ COLORS = ["red", "blue", "green", "yellow", "orange", "purple"]
 SIZES = ["small", "big"]
 STYLES = ["solid", "half", "border"]
 
-# Style descriptions for natural language
-STYLE_DESCRIPTIONS = {
-    "solid": ["solid", "completely filled", "uniform", "pure"],
-    "half": ["{color1} and {color2} half and half", "half {color1} half {color2}",
-             "split between {color1} and {color2}", "divided into {color1} and {color2}"],
-    "border": ["with a {color2} border", "with a {color2} outline", "outlined in {color2}",
-               "framed in {color2}", "bordered in {color2}", "with {color2} edges"]
-}
-
 @dataclass
 class Requirements:
     """Class to hold object property requirements for template matching."""
@@ -187,7 +178,7 @@ class BFSExpressionHandler:
                 ],
                 "half": [
                     self.template_with_requirements("the half and half {shape_type}", "half"),
-                    self.template_with_requirements("the {shape_type} split into two colors", "half")
+                    self.template_with_requirements("the {shape_type} split half-half into two colors", "half")
                 ],
                 "border": [
                     self.template_with_requirements("the {shape_type} with a border", "border"),
@@ -208,7 +199,7 @@ class BFSExpressionHandler:
                 ],
                 "half": [
                     self.template_with_requirements("the half {color1} half {color2} object", "half"),
-                    self.template_with_requirements("the object split into {color1} and {color2}", "half")
+                    self.template_with_requirements("the object split half-half into {color1} and {color2}", "half")
                 ],
                 "border": [
                     self.template_with_requirements("the {color1} object with a {color2} border", "border"),
@@ -222,7 +213,7 @@ class BFSExpressionHandler:
                     self.template_with_requirements("the completely filled {size} object", "solid")
                 ],
                 "half": [
-                    self.template_with_requirements("the {size} object split into two colors", "half"),
+                    self.template_with_requirements("the {size} object split half-half into two colors", "half"),
                     self.template_with_requirements("the dual-colored {size} object", "half")
                 ],
                 "border": [
@@ -245,7 +236,7 @@ class BFSExpressionHandler:
                 ],
                 "half": [
                     self.template_with_requirements("the half {color1} half {color2} {shape_type}", "half"),
-                    self.template_with_requirements("the {shape_type} split into {color1} and {color2}", "half")
+                    self.template_with_requirements("the {shape_type} split half-half into {color1} and {color2}", "half")
                 ],
                 "border": [
                     self.template_with_requirements("the {color1} {shape_type} with a {color2} border", "border"),
@@ -259,7 +250,7 @@ class BFSExpressionHandler:
                     self.template_with_requirements("the {size} {shape_type} that's completely filled", "solid")
                 ],
                 "half": [
-                    self.template_with_requirements("the {size} {shape_type} split into two colors", "half"),
+                    self.template_with_requirements("the {size} {shape_type} split half-half into two colors", "half"),
                     self.template_with_requirements("the dual-colored {size} {shape_type}", "half")
                 ],
                 "border": [
@@ -274,7 +265,7 @@ class BFSExpressionHandler:
                     self.template_with_requirements("the completely filled {color1} {size} object", "solid")
                 ],
                 "half": [
-                    self.template_with_requirements("the {size} object split into {color1} and {color2}", "half"),
+                    self.template_with_requirements("the {size} object split half-half into {color1} and {color2}", "half"),
                     self.template_with_requirements("the half {color1} half {color2} {size} object", "half")
                 ],
                 "border": [
@@ -290,7 +281,7 @@ class BFSExpressionHandler:
                     self.template_with_requirements("the {size} {shape_type} that's purely {color1}", "solid")
                 ],
                 "half": [
-                    self.template_with_requirements("the {size} {shape_type} split into {color1} and {color2}", "half"),
+                    self.template_with_requirements("the {size} {shape_type} split half-half into {color1} and {color2}", "half"),
                     self.template_with_requirements("the half {color1} half {color2} {size} {shape_type}", "half"),
                     self.template_with_requirements("the {size} {shape_type} that's half {color1}", "half"),
                     self.template_with_requirements("the {size} {shape_type} with half {color2}", "half")

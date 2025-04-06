@@ -53,37 +53,29 @@ class DFSExpressionHandler:
         """Initialize all templates for DFS referring expressions."""
         # DFS (position-based) templates as referring expressions
         self.dfs_templates = [
-            # Standard templates with clear direction
-            "the object in the {row_num} row {row_dir}, {col_num} column {col_dir}",
+            # Core position templates with balanced direction references
             "the object in the {ordinal_row} row {row_dir}, {ordinal_col} column {col_dir}",
+            "the object in the {ordinal_row} row {row_alt_dir}, {ordinal_col} column {col_dir}",
+            "the object in the {ordinal_row} row {row_dir}, {ordinal_col} column {col_alt_dir}",
+            "the object in the {ordinal_row} row {row_alt_dir}, {ordinal_col} column {col_alt_dir}",
+
+            # Variations on position references
             "the {ordinal_col} object {col_dir} in the {ordinal_row} row {row_dir}",
-            "the object located in the {ordinal_row} row {row_dir}, {ordinal_col} position {col_dir}",
-            "the shape in the {ordinal_row} row {row_dir} at position {ordinal_col} {col_dir}",
-            "the object in the {ordinal_row} row {row_dir} and {ordinal_col} column {col_dir}",
-            "the shape in the {row_num} row {row_dir}, {col_num} column {col_dir}",
-            "the shape in the {ordinal_row} row {row_dir} at the {ordinal_col} spot {col_dir}",
-            "the shape in the {ordinal_row} row {row_dir}, {ordinal_col} spot {col_dir}",
+            "the {ordinal_col} object {col_alt_dir} in the {ordinal_row} row {row_dir}",
+            "the {ordinal_col} object {col_dir} in the {ordinal_row} row {row_alt_dir}",
+            "the {ordinal_col} object {col_alt_dir} in the {ordinal_row} row {row_alt_dir}",
 
-            # Different ordering of words
-            "the {ordinal_col} item {col_dir} on the {ordinal_row} row {row_dir}",
-            "on row {row_num} {row_dir}, the {col_num} object {col_dir}",
-            "row {row_num} {row_dir}, column {col_num} {col_dir}",
-            "{ordinal_col} from {col_alt_dir} on the {ordinal_row} row {row_dir}",
-            "{ordinal_row} row {row_dir}, {ordinal_col} column {col_dir} - that object",
-            "the {ordinal_col} shape {col_dir} of row {row_num} {row_dir}",
-
-            # More colloquial or alternative ways to describe positions
-            "the {ordinal_col} thing {col_dir} on the {ordinal_row} row {row_dir}",
-            "the object at {col_num} across {col_dir}, {row_num} down {row_dir}",
-            "the shape positioned {ordinal_col} {col_dir} in row number {row_num} {row_dir}",
-            "the thing in row {row_num} {row_dir}, spot {col_num} {col_dir}",
-            "the {ordinal_col} thing {col_dir} in the {ordinal_row} line {row_dir}",
+            # Alternative phrasing
+            "the shape in row {row_num} {row_dir}, column {col_num} {col_dir}",
+            "the shape in row {row_num} {row_alt_dir}, column {col_num} {col_dir}",
+            "the shape in row {row_num} {row_dir}, column {col_num} {col_alt_dir}",
+            "the shape in row {row_num} {row_alt_dir}, column {col_num} {col_alt_dir}",
 
             # Directional counting
+            "starting from the {row_dir}, the object in row {ordinal_row}, column {ordinal_col} {col_dir}",
+            "starting from the {row_alt_dir}, the object in row {ordinal_row}, column {ordinal_col} {col_alt_dir}",
+            "starting from the {col_dir}, the {ordinal_col} object in the {ordinal_row} row {row_alt_dir}",
             "starting from the {col_alt_dir}, the {ordinal_col} object in the {ordinal_row} row {row_dir}",
-            "counting from the {row_alt_dir}, the shape in row {ordinal_row}, column {ordinal_col} {col_dir}",
-            "if you start from the {col_alt_dir}, the {ordinal_col} shape in row {row_num} {row_dir}",
-            "the {ordinal_col} object when counting from {col_alt_dir} in the {ordinal_row} row {row_dir}"
         ]
 
     def generate_dfs_referring_expressions(self, n: int = 10, min_grid: Tuple[int, int] = None, max_grid: Tuple[int, int] = None) -> List[Dict]:
@@ -115,11 +107,19 @@ class DFSExpressionHandler:
             ordinal_row = ORDINALS.get(display_row, f"{display_row}th")
             ordinal_col = ORDINALS.get(display_col, f"{display_col}th")
 
-            # Select random direction specifications
-            row_dir = random.choice(DIRECTION_SPECS["row_from_top"])
-            row_alt_dir = random.choice(DIRECTION_SPECS["row_from_bottom"])
-            col_dir = random.choice(DIRECTION_SPECS["col_from_left"])
-            col_alt_dir = random.choice(DIRECTION_SPECS["col_from_right"])
+            # Select direction specifications based on template requirements
+            if "{row_dir}" in template:
+                row_dir = random.choice(DIRECTION_SPECS["row_from_top"])
+                row_dir_type = "row_from_top"
+            if "{row_alt_dir}" in template:
+                row_alt_dir = random.choice(DIRECTION_SPECS["row_from_bottom"])
+                row_dir_type = "row_from_bottom"
+            if "{col_dir}" in template:
+                col_dir = random.choice(DIRECTION_SPECS["col_from_left"])
+                col_dir_type = "col_from_left"
+            if "{col_alt_dir}" in template:
+                col_alt_dir = random.choice(DIRECTION_SPECS["col_from_right"])
+                col_dir_type = "col_from_right"
 
             # Format the template
             referring_expression = template.format(
@@ -140,7 +140,11 @@ class DFSExpressionHandler:
                 "expression_type": "DFS",
                 "target_requirements": {
                     "row": row,  # 0-indexed position for internal use
-                    "column": col  # 0-indexed position for internal use
+                    "column": col,  # 0-indexed position for internal use
+                    "row_dir_type": row_dir_type,  # Direction type used for rows
+                    "col_dir_type": col_dir_type,  # Direction type used for columns
+                    "display_row": display_row,  # 1-indexed position for display
+                    "display_col": display_col,  # 1-indexed position for display
                 }
             }
             referring_expressions.append(expr_data)
@@ -161,16 +165,36 @@ class DFSExpressionHandler:
         """
         matching_objects = []
 
+        # Extract grid dimensions
+        num_rows, num_cols = grid_size
+
+        # Check if direction information is available in requirements
+        row_dir_type = requirements.get('row_dir_type', 'row_from_top')
+        col_dir_type = requirements.get('col_dir_type', 'col_from_left')
+
+        # Extract target positions
+        target_row = requirements['row']  # 0-indexed position
+        target_col = requirements['column']  # 0-indexed position
+
         for obj in objects:
             # Get the object's grid position
-            row, col = obj['grid_position']
+            obj_row, obj_col = obj['grid_position']
 
-            # Check both row and column requirements are present (DFS requires both coordinates)
-            if 'row' not in requirements or 'column' not in requirements:
-                continue
+            # Convert object position based on direction for comparison
+            # For "from bottom" direction, invert the row position
+            if row_dir_type == 'row_from_bottom':
+                effective_obj_row = num_rows - 1 - obj_row
+            else:
+                effective_obj_row = obj_row
 
-            # Check if the position matches exactly
-            if requirements['row'] == row and requirements['column'] == col:
+            # For "from right" direction, invert the column position
+            if col_dir_type == 'col_from_right':
+                effective_obj_col = num_cols - 1 - obj_col
+            else:
+                effective_obj_col = obj_col
+
+            # Check if the effective position matches the target position
+            if target_row == effective_obj_row and target_col == effective_obj_col:
                 matching_objects.append(obj)
 
         return matching_objects
@@ -240,6 +264,7 @@ if __name__ == "__main__":
     for i, expr_data in enumerate(dfs_referring_expressions, 1):
         print(f"{i}. Expression: {expr_data['referring_expression']}")
         print(f"   Requirements: row={expr_data['target_requirements']['row']}, column={expr_data['target_requirements']['column']}")
+        print(f"   Direction types: row={expr_data['target_requirements']['row_dir_type']}, column={expr_data['target_requirements']['col_dir_type']}")
         print()
 
     print(f"\nTotal templates: {len(handler.dfs_templates)}")
