@@ -29,23 +29,23 @@ If no matching shape is found, return empty coordinates. If multiple shapes matc
 
 ```
 
-The image contains shapes (triangles, squares, or circles) of different sizes (small or large), colors (red, blue, green, yellow, purple, orange), and styles (solid-filled, two-color split, or outlined). These shapes are arranged in a grid layout.
+The image contains shapes (triangles, squares, or circles) of at most two sizes (small or large), colors (red, blue, green, yellow, purple, orange), and at most three styles (solid-filled, two-color split, or outlined).
 
-Please find the corresponding bounding box for "the large red triangle".
+Please find the corresponding bounding box for {referring_expression}.
 Output your reasoning process within <think> </think> tags and the answer, as JSON, within <answer> </answer> tags. The JSON should include the bounding box coordinates [x_min, y_min, x_max, y_max].
-If no matching shape is found, return "no match". If multiple shapes match, output all bounding boxes.
+If no matching shape is found, return "no match" in answer. If multiple shapes match, output all bounding boxes in answer.
 ```
 
 ## Expected Model Response
 
 ```
 <think>
-I need to find a "large red triangle" in the image.
-1. First, I'll scan the image for triangular shapes
-2. Then I'll identify which triangles are red
-3. Finally, I'll determine which red triangle is large
+I need to find a {referring_expression} in the image.
+1. First, I'll scan the image for {referring_expression}
+2. Then I'll identify which {referring_expression} are {color}
+3. Finally, I'll determine which {referring_expression} is {size}
 
-I can see a large red triangle located in the top-left portion of the image.
+I can see a {referring_expression} located in the top-left portion of the image.
 Its bounding box coordinates as percentages of the image dimensions are approximately [15.2, 12.8, 32.5, 35.7].
 </think>
 

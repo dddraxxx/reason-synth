@@ -25,3 +25,5 @@ rotated_test/
 # unsloth
 unsloth_compiled_cache/
 unsloth_cache/
+
+__pycache__/

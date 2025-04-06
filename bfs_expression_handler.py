@@ -355,6 +355,14 @@ class BFSExpressionHandler:
         self.all_attr_patterns = ["shape_color_size_style"]
         self.style_specific_patterns = ["solid_style", "half_style", "border_style"]
 
+        # Create a pattern groups dictionary for ratio-based sampling
+        self.pattern_groups = {
+            "single": self.single_attr_patterns,
+            "two": self.two_attr_patterns,
+            "three": self.three_attr_patterns,
+            "all": self.all_attr_patterns
+        }
+
     def matches_attribute_requirements(self, obj_info, requirement):
         """
         Check if an object matches a single attribute requirement.
@@ -380,20 +388,6 @@ class BFSExpressionHandler:
             if required_value in ["{shape_type}", "{color1}", "{color2}", "{size}", "{style}"]:
                 continue
 
-            # # Handle different attribute types
-            # if attr in ["shape_type", "size", "style"]:
-            #     if obj_value != required_value:
-            #         return False
-
-            # # Handle color matching
-            # elif attr == "color1":
-            #     if obj_value != required_value:
-            #         return False
-
-            # elif attr == "color2":
-            #     # Only check color2 for styles that use it
-            #     if obj_value != required_value:
-            #         return False
             if obj_value != required_value:
                 return False
 
@@ -434,28 +428,49 @@ class BFSExpressionHandler:
 
         return matching_objects
 
-    def generate_bfs_expressions(self, objects_data, sampling_strategy="all", samples_per_pattern=1):
+    def generate_bfs_expressions(self, objects_data, bfs_pattern_type="all", samples_per_pattern=1,
+                                bfs_ratio_single_attr=0.25, bfs_ratio_two_attr=0.25,
+                                bfs_ratio_three_attr=0.25, bfs_ratio_four_attr=0.25):
         """
-        Generate BFS expressions from object data.
+        Generate BFS (attribute-based) referring expressions.
 
         Args:
-            objects_data: List of objects with attributes
-            sampling_strategy: Strategy for sampling templates
-                - "all": Generate expressions using every available template
-                - "patterns": Sample one template from each pattern category N times
-            samples_per_pattern: Number of samples to generate per pattern (default: 1)
-                - Only used when sampling_strategy is "patterns"
+            objects_data: List of object dictionaries
+            bfs_pattern_type: Strategy for generating expressions
+                               "all" - Use all attributes of objects
+                               "patterns" - Use predefined patterns
+            samples_per_pattern: Number of samples to generate per pattern
+            bfs_ratio_single_attr: Proportion of single attribute expressions (default: 0.25)
+            bfs_ratio_two_attr: Proportion of two attribute combinations (default: 0.25)
+            bfs_ratio_three_attr: Proportion of three attribute combinations (default: 0.25)
+            bfs_ratio_four_attr: Proportion of all attribute expressions (default: 0.25)
 
         Returns:
-            List of expression dictionaries with requirements
+            List of expression dictionaries
         """
         if not objects_data:
             return []
 
         # Validate sampling strategy
         valid_strategies = ["all", "patterns"]
-        if sampling_strategy not in valid_strategies:
+        if bfs_pattern_type not in valid_strategies:
             raise ValueError(f"Invalid sampling strategy. Choose from: {valid_strategies}")
+
+        # Check if we're using ratio-based sampling
+        using_ratio_sampling = any(x != 0.25 for x in [
+            bfs_ratio_single_attr, bfs_ratio_two_attr,
+            bfs_ratio_three_attr, bfs_ratio_four_attr
+        ])
+
+        # Normalize ratios if they don't sum to 1
+        if using_ratio_sampling:
+            total_ratio = sum([bfs_ratio_single_attr, bfs_ratio_two_attr,
+                               bfs_ratio_three_attr, bfs_ratio_four_attr])
+            if total_ratio != 1.0:
+                bfs_ratio_single_attr /= total_ratio
+                bfs_ratio_two_attr /= total_ratio
+                bfs_ratio_three_attr /= total_ratio
+                bfs_ratio_four_attr /= total_ratio
 
         all_expressions = []
 
@@ -477,33 +492,61 @@ class BFSExpressionHandler:
             # Get object style
             style = obj_info["style"]
 
-            # Get a list of all template keys
-            all_template_keys = list(self.template_patterns.keys())
+            if bfs_pattern_type == "patterns":
+                obj_expressions = []
 
-            if sampling_strategy == "patterns":
-                # Sample from each pattern category
-                for template_key in all_template_keys:
-                    # Get templates for this key
-                    if isinstance(self.template_patterns[template_key], dict):
-                        if style not in self.template_patterns[template_key]:
+                if using_ratio_sampling:
+                    # Calculate samples per complexity group based on ratios
+                    total_samples = samples_per_pattern * (len(self.single_attr_patterns) +
+                                                          len(self.two_attr_patterns) +
+                                                          len(self.three_attr_patterns) +
+                                                          len(self.all_attr_patterns))
+
+                    # Calculate samples per group
+                    single_samples = int(total_samples * bfs_ratio_single_attr)
+                    two_samples = int(total_samples * bfs_ratio_two_attr)
+                    three_samples = int(total_samples * bfs_ratio_three_attr)
+                    all_samples = int(total_samples * bfs_ratio_four_attr)
+
+                    # Generate expressions for each complexity group based on ratios
+                    ratio_data = [
+                        (self.single_attr_patterns, single_samples),
+                        (self.two_attr_patterns, two_samples),
+                        (self.three_attr_patterns, three_samples),
+                        (self.all_attr_patterns, all_samples)
+                    ]
+
+                    for pattern_list, num_samples in ratio_data:
+                        if num_samples <= 0:
                             continue
-                        templates = self.template_patterns[template_key][style]
-                    else:
-                        templates = self.template_patterns[template_key]
 
-                    # Sample N templates or all if fewer than N are available
-                    sample_count = min(samples_per_pattern, len(templates))
-                    sampled_templates = random.sample(templates, sample_count)
+                        # If we have more samples than patterns, distribute evenly
+                        patterns_to_use = pattern_list
 
-                    # Generate expressions for each sampled template
-                    for template_tuple in sampled_templates:
-                        template, requirements_list = template_tuple
-                        expr_dict = self._create_expression(template_key, template, requirements_list, obj_info)
-                        if expr_dict:
-                            all_expressions.append(expr_dict)
+                        if num_samples < len(pattern_list):
+                            # Randomly sample patterns if we need fewer than available
+                            patterns_to_use = random.sample(pattern_list, num_samples)
+                            samples_per_selected_pattern = 1
+                        else:
+                            # Distribute samples across patterns
+                            samples_per_selected_pattern = max(1, num_samples // len(pattern_list))
+
+                        # Generate expressions for selected patterns
+                        for pattern_key in patterns_to_use:
+                            pattern_expressions = self._generate_expressions_for_pattern(
+                                pattern_key, obj_info, style, samples_per_selected_pattern)
+                            obj_expressions.extend(pattern_expressions)
+                else:
+                    # Original behavior - sample each pattern equally
+                    for template_key in list(self.template_patterns.keys()):
+                        pattern_expressions = self._generate_expressions_for_pattern(
+                            template_key, obj_info, style, samples_per_pattern)
+                        obj_expressions.extend(pattern_expressions)
+
+                all_expressions.extend(obj_expressions)
 
             else:  # "all" strategy - use every available template
-                for template_key in all_template_keys:
+                for template_key in list(self.template_patterns.keys()):
                     # Get templates for this key
                     if isinstance(self.template_patterns[template_key], dict):
                         if style not in self.template_patterns[template_key]:
@@ -520,6 +563,45 @@ class BFSExpressionHandler:
                             all_expressions.append(expr_dict)
 
         return all_expressions
+
+    def _generate_expressions_for_pattern(self, template_key, obj_info, style, num_samples):
+        """
+        Helper method to generate expressions for a specific pattern.
+
+        Args:
+            template_key: The pattern key
+            obj_info: Object attributes
+            style: Object style
+            num_samples: Number of samples to generate
+
+        Returns:
+            List of expression dictionaries
+        """
+        expressions = []
+
+        # Get templates for this key
+        if isinstance(self.template_patterns[template_key], dict):
+            if style not in self.template_patterns[template_key]:
+                return []
+            templates = self.template_patterns[template_key][style]
+        else:
+            templates = self.template_patterns[template_key]
+
+        # Sample N templates or all if fewer than N are available
+        sample_count = min(num_samples, len(templates))
+        if sample_count == 0:
+            return []
+
+        sampled_templates = random.sample(templates, sample_count)
+
+        # Generate expressions for each sampled template
+        for template_tuple in sampled_templates:
+            template, requirements_list = template_tuple
+            expr_dict = self._create_expression(template_key, template, requirements_list, obj_info)
+            if expr_dict:
+                expressions.append(expr_dict)
+
+        return expressions
 
     def _create_expression(self, template_key, template, pre_computed_requirements, obj_info):
         """
@@ -575,9 +657,8 @@ class BFSExpressionHandler:
 
             return {
                 "referring_expression": expression,
-                "expression_type": "bfs",
-                "target_requirements": concrete_requirements,
-                "pattern_key": template_key
+                "expression_type": "BFS",
+                "target_requirements": concrete_requirements
             }
 
         except KeyError as e:
@@ -597,7 +678,11 @@ if __name__ == "__main__":
         else:
             print(f"- {pattern}: {len(templates)} templates")
 
-    print("\nSample BFS expressions:")
+    print("\nPattern groups:")
+    for group_name, patterns in handler.pattern_groups.items():
+        print(f"- {group_name}: {patterns}")
+
+    print("\nSample BFS expressions with equal ratios:")
     # Create sample objects for demonstration
     sample_objects = [
         {
@@ -624,10 +709,27 @@ if __name__ == "__main__":
     ]
 
     # Test the patterns strategy that samples each pattern once
-    expressions = handler.generate_bfs_expressions(sample_objects, sampling_strategy="patterns", samples_per_pattern=1)
-    for i, expr in enumerate(expressions, 1):
+    expressions = handler.generate_bfs_expressions(
+        sample_objects,
+        bfs_pattern_type="patterns",
+        samples_per_pattern=1
+    )
+    for i, expr in enumerate(expressions[:5], 1):
         print(f"{i}. {expr['referring_expression']}")
-        print(f"   Template key: {expr['pattern_key']}")
+
+    print("\nSample BFS expressions with custom ratios:")
+    # Test with custom ratios
+    expressions = handler.generate_bfs_expressions(
+        sample_objects,
+        bfs_pattern_type="patterns",
+        samples_per_pattern=1,
+        bfs_ratio_single_attr=0.6,
+        bfs_ratio_two_attr=0.3,
+        bfs_ratio_three_attr=0.1,
+        bfs_ratio_four_attr=0.0
+    )
+    for i, expr in enumerate(expressions[:5], 1):
+        print(f"{i}. {expr['referring_expression']}")
         # Print all possible requirement sets
         print("   Requirements:")
         for j, req_set in enumerate(expr['target_requirements'], 1):
