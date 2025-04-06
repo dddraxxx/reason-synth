@@ -50,7 +50,7 @@ from tqdm import tqdm, trange
 
 # Import the expression handlers
 from dfs_expression_handler import DFSExpressionHandler
-from bfs_expression_handler import BFSExpressionHandler
+from bfs_expression_handler import BFSExpressionHandler, SHAPE_TYPES, COLORS, SIZES, STYLES
 
 # Configuration for grid sizes and expression counts
 GRID_SIZE_TO_COUNT = {
@@ -242,14 +242,49 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
                     image_min_grid = (max(0, min(grid_position_min[0], rows - 1)), max(0, min(grid_position_min[1], cols - 1)))
                     image_max_grid = (min(rows - 1, grid_position_max[0]), min(cols - 1, grid_position_max[1]))
 
-                    dfs_expressions = dfs_handler.generate_dfs_referring_expressions(
-                        num_dfs,
-                        min_grid=image_min_grid,
-                        max_grid=image_max_grid
-                    )
+                    # Generate some expressions from real objects
+                    existence_count = max(1, int(num_dfs * sampling_existence_ratio))
+                    random_count = max(1, int(num_dfs * (1 - sampling_existence_ratio)))
+
+                    # Store all DFS expressions
+                    all_dfs_expressions = []
+
+                    # First, generate expressions from random positions
+                    if random_count > 0:
+                        dfs_expressions = dfs_handler.generate_dfs_referring_expressions(
+                            random_count,
+                            min_grid=image_min_grid,
+                            max_grid=image_max_grid
+                        )
+                        all_dfs_expressions.extend(dfs_expressions)
+
+                    # Then, generate expressions from existing objects
+                    if existence_count > 0 and objects:
+                        # Extract grid positions from existing objects
+                        existing_positions = []
+                        for obj in objects:
+                            if 'grid_position' in obj:
+                                existing_positions.append(tuple(obj['grid_position']))
+
+                        # Generate expressions from existing positions
+                        for _ in range(existence_count):
+                            if existing_positions:
+                                # Choose a random existing position
+                                row, col = random.choice(existing_positions)
+
+                                # Ensure the position is within our grid constraints
+                                if (image_min_grid[0] <= row <= image_max_grid[0] and
+                                    image_min_grid[1] <= col <= image_max_grid[1]):
+                                    # Generate expression for this position
+                                    expr = dfs_handler.generate_dfs_referring_expressions(
+                                        1,
+                                        min_grid=(row, col),
+                                        max_grid=(row, col)
+                                    )
+                                    all_dfs_expressions.extend(expr)
 
                     # Find matching objects for each DFS expression
-                    for expr_data in dfs_expressions:
+                    for expr_data in all_dfs_expressions:
                         matching_objects = dfs_handler.find_matching_objects(
                             expr_data['target_requirements'],
                             objects,
@@ -268,16 +303,13 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
                                 print(f"  ○ DFS expression '{expr_data['referring_expression']}' has no matches (empty match case)")
 
                     if debug:
-                        print(f"Generated {len(dfs_expressions)} DFS expressions, all kept")
+                        print(f"Generated {len(all_dfs_expressions)} DFS expressions, all kept")
 
                 # Generate BFS (attribute-based) expressions
                 if num_bfs > 0:
-                    # Generate many more BFS expressions than needed, to ensure we have enough valid ones
-                    generation_multiplier = 3
-
                     # Calculate how many expressions to generate with existence vs random
-                    existence_count = max(1, int(num_bfs * sampling_existence_ratio * generation_multiplier))
-                    random_count = max(1, int(num_bfs * (1 - sampling_existence_ratio) * generation_multiplier))
+                    existence_count = max(1, int(num_bfs * sampling_existence_ratio))
+                    random_count = max(1, int(num_bfs * (1 - sampling_existence_ratio)))
 
                     all_bfs_expressions = []
 
@@ -287,11 +319,12 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
                         existence_bfs = bfs_handler.generate_bfs_expressions(
                             objects,
                             bfs_pattern_type="all" if bfs_pattern_type == "all" else "patterns",
-                            samples_per_pattern=existence_count,
+                            samples_per_pattern=1,
                             bfs_ratio_single_attr=bfs_ratio_single_attr,
                             bfs_ratio_two_attr=bfs_ratio_two_attr,
                             bfs_ratio_three_attr=bfs_ratio_three_attr,
-                            bfs_ratio_four_attr=bfs_ratio_four_attr
+                            bfs_ratio_four_attr=bfs_ratio_four_attr,
+                            num_expressions=existence_count  # Directly specify the number of expressions to generate
                         )
 
                         if debug:
@@ -302,19 +335,23 @@ def generate_referring_expressions_dataset(input_path: str, output_path: str,
 
                     # Handle random-based expressions
                     if random_count > 0:
-                        # Generate with random objects (will be filtered later)
+                        # Generate random objects directly from the handler
+                        random_objects = bfs_handler.generate_random_objects(count=random_count)
+
+                        # Generate with these random objects
                         random_bfs = bfs_handler.generate_bfs_expressions(
-                            objects[:min(len(objects), 10)],  # Limit to 10 objects for efficiency
+                            random_objects,
                             bfs_pattern_type="patterns",  # Always use patterns for random sampling
-                            samples_per_pattern=random_count,
+                            samples_per_pattern=1,  # Generate 1 expression per random object
                             bfs_ratio_single_attr=bfs_ratio_single_attr,
                             bfs_ratio_two_attr=bfs_ratio_two_attr,
                             bfs_ratio_three_attr=bfs_ratio_three_attr,
-                            bfs_ratio_four_attr=bfs_ratio_four_attr
+                            bfs_ratio_four_attr=bfs_ratio_four_attr,
+                            num_expressions=random_count  # Directly specify the number of expressions to generate
                         )
 
                         if debug:
-                            print(f"Generated {len(random_bfs)} random-based BFS expressions")
+                            print(f"Generated {len(random_bfs)} random-based BFS expressions from truly random attributes")
 
                         all_bfs_expressions.extend(random_bfs)
                         random_expressions += len(random_bfs)

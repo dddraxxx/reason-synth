@@ -175,6 +175,43 @@ class DFSExpressionHandler:
 
         return matching_objects
 
+    def generate_random_objects(self, count: int = 10, min_grid: Tuple[int, int] = None, max_grid: Tuple[int, int] = None) -> List[Dict]:
+        """
+        Generate a list of objects with random grid positions.
+
+        Args:
+            count: Number of random objects to generate
+            min_grid: Minimum grid size (rows, columns) to consider, defaults to (0, 0)
+            max_grid: Maximum grid size (rows, columns) to consider, defaults to self.max_grid_size
+
+        Returns:
+            List of objects with random grid positions
+        """
+        # Set default grid limits if not provided
+        min_row, min_col = min_grid if min_grid else (0, 0)
+        max_row, max_col = max_grid if max_grid else (self.max_rows - 1, self.max_cols - 1)
+
+        random_objects = []
+
+        for _ in range(count):
+            # Generate a random object with random grid position
+            row = random.randint(min_row, max_row)
+            col = random.randint(min_col, max_col)
+
+            random_obj = {
+                "grid_position": [row, col],
+                # Add dummy shape attributes to make object structure consistent
+                "shape_type": "random",
+                "color1": "random",
+                "color2": "random",
+                "size": "random",
+                "style": "random"
+            }
+
+            random_objects.append(random_obj)
+
+        return random_objects
+
 if __name__ == "__main__":
     """Generate and print DFS referring expression templates."""
     import argparse

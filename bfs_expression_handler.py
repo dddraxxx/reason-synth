@@ -428,9 +428,42 @@ class BFSExpressionHandler:
 
         return matching_objects
 
+    def generate_random_objects(self, count: int = 10) -> List[Dict]:
+        """
+        Generate a list of objects with random attribute combinations.
+
+        Args:
+            count: Number of random objects to generate
+
+        Returns:
+            List of objects with random attributes
+        """
+        random_objects = []
+
+        for _ in range(count):
+            # Generate a random object with random attributes
+            random_obj = {
+                "shape_type": random.choice(SHAPE_TYPES),
+                "color1": random.choice(COLORS),
+                "color2": random.choice(COLORS),
+                "size": random.choice(SIZES),
+                "style": random.choice(STYLES)
+            }
+
+            # Ensure color2 is different for border/half styles
+            if random_obj["style"] in ["border", "half"] and random_obj["color1"] == random_obj["color2"]:
+                possible_colors = [c for c in COLORS if c != random_obj["color1"]]
+                if possible_colors:
+                    random_obj["color2"] = random.choice(possible_colors)
+
+            random_objects.append(random_obj)
+
+        return random_objects
+
     def generate_bfs_expressions(self, objects_data, bfs_pattern_type="all", samples_per_pattern=1,
                                 bfs_ratio_single_attr=0.25, bfs_ratio_two_attr=0.25,
-                                bfs_ratio_three_attr=0.25, bfs_ratio_four_attr=0.25):
+                                bfs_ratio_three_attr=0.25, bfs_ratio_four_attr=0.25,
+                                num_expressions=None):
         """
         Generate BFS (attribute-based) referring expressions.
 
@@ -444,9 +477,10 @@ class BFSExpressionHandler:
             bfs_ratio_two_attr: Proportion of two attribute combinations (default: 0.25)
             bfs_ratio_three_attr: Proportion of three attribute combinations (default: 0.25)
             bfs_ratio_four_attr: Proportion of all attribute expressions (default: 0.25)
+            num_expressions: If provided, limits the total number of expressions returned to this value
 
         Returns:
-            List of expression dictionaries
+            List of expression dictionaries with exactly num_expressions items if specified
         """
         if not objects_data:
             return []
@@ -475,92 +509,114 @@ class BFSExpressionHandler:
         all_expressions = []
 
         # For each object, generate expressions based on sampling strategy
-        for obj in objects_data:
-            # Create object info for expression generation
-            obj_info = {
-                "shape_type": obj.get("shape_type"),
-                "color1": obj.get("color1"),
-                "color2": obj.get("color2"),
-                "size": obj.get("size"),
-                "style": obj.get("style")
-            }
+        all_expressions = []
+        remaining_expressions = num_expressions if num_expressions is not None else None
 
-            # Skip objects that don't have required attributes
-            if not all(k in obj_info and obj_info[k] is not None for k in ["shape_type", "color1", "style", "size"]):
-                continue
+        # Keep generating until we have enough expressions or run out of objects
+        while remaining_expressions is None or remaining_expressions > 0:
+            for obj in objects_data:
+                # Create object info for expression generation
+                obj_info = {
+                    "shape_type": obj.get("shape_type"),
+                    "color1": obj.get("color1"),
+                    "color2": obj.get("color2"),
+                    "size": obj.get("size"),
+                    "style": obj.get("style")
+                }
 
-            # Get object style
-            style = obj_info["style"]
+                # Skip objects that don't have required attributes
+                if not all(k in obj_info and obj_info[k] is not None for k in ["shape_type", "color1", "style", "size"]):
+                    continue
 
-            if bfs_pattern_type == "patterns":
-                obj_expressions = []
+                # Get object style
+                style = obj_info["style"]
 
-                if using_ratio_sampling:
-                    # Calculate samples per complexity group based on ratios
-                    total_samples = samples_per_pattern * (len(self.single_attr_patterns) +
-                                                          len(self.two_attr_patterns) +
-                                                          len(self.three_attr_patterns) +
-                                                          len(self.all_attr_patterns))
+                if bfs_pattern_type == "patterns":
+                    obj_expressions = []
 
-                    # Calculate samples per group
-                    single_samples = int(total_samples * bfs_ratio_single_attr)
-                    two_samples = int(total_samples * bfs_ratio_two_attr)
-                    three_samples = int(total_samples * bfs_ratio_three_attr)
-                    all_samples = int(total_samples * bfs_ratio_four_attr)
+                    if using_ratio_sampling:
+                        # Calculate samples per complexity group based on ratios
+                        total_samples = samples_per_pattern * (len(self.single_attr_patterns) +
+                                                              len(self.two_attr_patterns) +
+                                                              len(self.three_attr_patterns) +
+                                                              len(self.all_attr_patterns))
 
-                    # Generate expressions for each complexity group based on ratios
-                    ratio_data = [
-                        (self.single_attr_patterns, single_samples),
-                        (self.two_attr_patterns, two_samples),
-                        (self.three_attr_patterns, three_samples),
-                        (self.all_attr_patterns, all_samples)
-                    ]
+                        # Calculate samples per group
+                        single_samples = int(total_samples * bfs_ratio_single_attr)
+                        two_samples = int(total_samples * bfs_ratio_two_attr)
+                        three_samples = int(total_samples * bfs_ratio_three_attr)
+                        all_samples = int(total_samples * bfs_ratio_four_attr)
 
-                    for pattern_list, num_samples in ratio_data:
-                        if num_samples <= 0:
-                            continue
+                        # Generate expressions for each complexity group based on ratios
+                        ratio_data = [
+                            (self.single_attr_patterns, single_samples),
+                            (self.two_attr_patterns, two_samples),
+                            (self.three_attr_patterns, three_samples),
+                            (self.all_attr_patterns, all_samples)
+                        ]
 
-                        # If we have more samples than patterns, distribute evenly
-                        patterns_to_use = pattern_list
+                        for pattern_list, num_samples in ratio_data:
+                            if num_samples <= 0:
+                                continue
 
-                        if num_samples < len(pattern_list):
-                            # Randomly sample patterns if we need fewer than available
-                            patterns_to_use = random.sample(pattern_list, num_samples)
-                            samples_per_selected_pattern = 1
-                        else:
-                            # Distribute samples across patterns
-                            samples_per_selected_pattern = max(1, num_samples // len(pattern_list))
+                            # If we have more samples than patterns, distribute evenly
+                            patterns_to_use = pattern_list
 
-                        # Generate expressions for selected patterns
-                        for pattern_key in patterns_to_use:
-                            pattern_expressions = self._generate_expressions_for_pattern(
-                                pattern_key, obj_info, style, samples_per_selected_pattern)
-                            obj_expressions.extend(pattern_expressions)
-                else:
-                    # Original behavior - sample each pattern equally
-                    for template_key in list(self.template_patterns.keys()):
-                        pattern_expressions = self._generate_expressions_for_pattern(
-                            template_key, obj_info, style, samples_per_pattern)
-                        obj_expressions.extend(pattern_expressions)
+                            if num_samples < len(pattern_list):
+                                # Randomly sample patterns if we need fewer than available
+                                patterns_to_use = random.sample(pattern_list, num_samples)
+                                samples_per_selected_pattern = 1
+                            else:
+                                # Distribute samples across patterns
+                                samples_per_selected_pattern = max(1, num_samples // len(pattern_list))
 
-                all_expressions.extend(obj_expressions)
-
-            else:  # "all" strategy - use every available template
-                for template_key in list(self.template_patterns.keys()):
-                    # Get templates for this key
-                    if isinstance(self.template_patterns[template_key], dict):
-                        if style not in self.template_patterns[template_key]:
-                            continue
-                        templates = self.template_patterns[template_key][style]
+                            # Generate expressions for selected patterns
+                            for pattern_key in patterns_to_use:
+                                pattern_expressions = self._generate_expressions_for_pattern(
+                                    pattern_key, obj_info, style, samples_per_selected_pattern)
+                                obj_expressions.extend(pattern_expressions)
                     else:
-                        templates = self.template_patterns[template_key]
+                        # Original behavior - sample each pattern equally
+                        for template_key in list(self.template_patterns.keys()):
+                            pattern_expressions = self._generate_expressions_for_pattern(
+                                template_key, obj_info, style, samples_per_pattern)
+                            obj_expressions.extend(pattern_expressions)
 
-                    # Use all templates
-                    for template_tuple in templates:
-                        template, requirements_list = template_tuple
-                        expr_dict = self._create_expression(template_key, template, requirements_list, obj_info)
-                        if expr_dict:
-                            all_expressions.append(expr_dict)
+                    all_expressions.extend(obj_expressions)
+
+                else:  # "all" strategy - use every available template
+                    for template_key in list(self.template_patterns.keys()):
+                        # Get templates for this key
+                        if isinstance(self.template_patterns[template_key], dict):
+                            if style not in self.template_patterns[template_key]:
+                                continue
+                            templates = self.template_patterns[template_key][style]
+                        else:
+                            templates = self.template_patterns[template_key]
+
+                        # Use all templates
+                        for template_tuple in templates:
+                            template, requirements_list = template_tuple
+                            expr_dict = self._create_expression(template_key, template, requirements_list, obj_info)
+                            if expr_dict:
+                                all_expressions.append(expr_dict)
+
+                # Check if we've reached the required number of expressions
+                if remaining_expressions is not None:
+                    remaining_expressions = max(0, remaining_expressions - len(all_expressions))
+                    if remaining_expressions <= 0:
+                        break
+
+            # If we're not limited by num_expressions, break after one pass
+            if remaining_expressions is None:
+                break
+
+        # If num_expressions is specified, randomly sample exactly that many expressions
+        if num_expressions is not None and all_expressions:
+            # Ensure we don't ask for more expressions than available
+            num_to_sample = min(num_expressions, len(all_expressions))
+            random.shuffle(all_expressions)
+            all_expressions = all_expressions[:num_to_sample]
 
         return all_expressions
 
