@@ -16,6 +16,12 @@ def load_jsonl(file_path):
             data.append(json.loads(line))
     return data
 
+sample_prompts = """The image contains shapes (triangles, squares, or circles) of at most two sizes (small or large), colors (red, blue, green, yellow, purple, orange), and at most three styles (solid-filled, two-color split, or outlined).
+
+Please find the corresponding bounding box for {referring_expression}.
+Output your reasoning process within <think> </think> tags and the answer, as JSON, within <answer> </answer> tags. The JSON should include the bounding box coordinates [x_min, y_min, x_max, y_max].
+If no matching shape is found, return "no match" in answer. If multiple shapes match, output all bounding boxes in answer."""
+
 def process_item(item, base_dir):
     """Process a single item and return a dictionary."""
     # Check if image exists
@@ -34,6 +40,7 @@ def process_item(item, base_dir):
     # Create and return dictionary for single item
     return {
         "image": image,
+        "prompt": sample_prompts.format(referring_expression=item["referring_expression"])
     }
 
 def main():
