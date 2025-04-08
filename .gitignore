@@ -27,3 +27,5 @@ unsloth_compiled_cache/
 unsloth_cache/
 
 __pycache__/
+wandb/
+logs/

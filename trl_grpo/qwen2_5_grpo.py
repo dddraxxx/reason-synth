@@ -280,6 +280,8 @@ def log_reward(completions, solution, **kwargs):
         }
 
         # Write JSON entry
+        if not os.path.exists(log_path):
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "a") as f:
             f.write(json.dumps(log_entry) + "\n")
 
@@ -330,7 +332,7 @@ training_args = GRPOConfig(
     vllm_device=os.getenv("VLLM_DEVICE", "auto"),
     max_prompt_length = 1424,
     max_completion_length = 700,
-    num_train_epochs = 1, # Set to 1 for a full training run
+    num_train_epochs = 5, # Set to 1 for a full training run
     # max_steps = 450,
     # save_steps = 450,
     # max_grad_norm = 0.5, # need to be the same as the gradient clipping in zero3.json
