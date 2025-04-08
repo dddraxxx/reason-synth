@@ -1,5 +1,6 @@
 # %%capture
 import logging
+import numpy as np
 import os
 os.environ["WANDB_PROJECT"] = "reason-synth"
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
@@ -42,11 +43,21 @@ import copy
 def make_conversation_image(example):
     prompt = copy.deepcopy(conv_prompt)
     prompt[-1]["content"][-1]["text"] = QUESTION_TEMPLATE.format(referring_expression=example["referring_expression"])
-    gt_answer = [m['bbox'] for m in json.loads(example["matching_objects"])]
+    absolute_answer = [m['bbox'] for m in json.loads(example["matching_objects"])]
+    # normalized_answer = [m['bbox'] for m in json.loads(example["matching_objects"])]
+    # image_width, image_height = example["image"].size
+    # absolute_answer = []
+    # for box in normalized_answer:
+    #     x_min = int(box[0]/1000 * image_width)
+    #     y_min = int(box[1]/1000 * image_height)
+    #     x_max = int(box[2]/1000 * image_width)
+    #     y_max = int(box[3]/1000 * image_height)
+    #     absolute_answer.append([x_min, y_min, x_max, y_max])
+
     return {
         "prompt": prompt,
         'ref_text': example["referring_expression"],
-        'solution': gt_answer,
+        'solution': absolute_answer,
     }
 
 #%%
@@ -102,6 +113,7 @@ def iou_reward(completions, solution, iou_reward_type='cont', **kwargs):
         rewards.append(reward)
     return rewards
 
+from scipy.optimize import linear_sum_assignment
 def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, **kwargs):
     """Extract multiple bounding boxes from completions and compute IoU rewards against solution.
     Uses bipartite matching to find optimal assignment between predicted and ground truth boxes.
@@ -113,20 +125,27 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
         iou_threshold_low: IoU values below this threshold will be set to 0
         iou_threshold_high: IoU values above this threshold will be set to 1
     """
-    import numpy as np
-    from scipy.optimize import linear_sum_assignment
-
     contents = [completion[0]["content"] for completion in completions]
     rewards = []
     answer_tag_pattern = r'<answer>(.*?)</answer>'
     bbox_pattern = r'\[(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*)\]'
+    matching_info = []
 
     for content, gt_boxes in zip(contents, solution):
         reward = 0.0
+        match_info = {
+            "pred_boxes": [],
+            "gt_boxes": gt_boxes,
+            "matches": [],
+            "match_ious": [],
+            "reward": 0.0
+        }
+
         try:
             content_answer_match = re.search(answer_tag_pattern, content, re.DOTALL)
             if not content_answer_match:
                 rewards.append(reward)
+                matching_info.append(match_info)
                 continue
 
             content_answer = content_answer_match.group(1).strip()
@@ -136,14 +155,21 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
                 # If ground truth also has no boxes, this is correct
                 if len(gt_boxes) == 0:
                     reward = 1.0
+                match_info["pred_boxes"] = "not exist"
+                match_info["reward"] = reward
                 rewards.append(reward)
+                matching_info.append(match_info)
                 continue
 
             # Find all bounding boxes in the answer - now using re.DOTALL
             all_bbox_matches = re.findall(bbox_pattern, content_answer, re.DOTALL)
             if not all_bbox_matches:
                 # No boxes found in prediction
+                if len(gt_boxes) == 0:
+                    reward = 1.0  # Correctly predicted no boxes
+                match_info["reward"] = reward
                 rewards.append(reward)
+                matching_info.append(match_info)
                 continue
 
             # Convert matches to lists of coordinates
@@ -155,23 +181,34 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
                 except ValueError:
                     continue  # Skip malformed boxes
 
+            match_info["pred_boxes"] = pred_boxes
+
             # Handle special cases
             if len(pred_boxes) == 0 and len(gt_boxes) == 0:
                 reward = 1.0  # Both prediction and ground truth have no boxes
+                match_info["reward"] = reward
                 rewards.append(reward)
+                matching_info.append(match_info)
                 continue
 
             if len(pred_boxes) == 0 or len(gt_boxes) == 0:
                 # One has boxes, the other doesn't
+                match_info["reward"] = reward
                 rewards.append(reward)  # reward stays 0
+                matching_info.append(match_info)
                 continue
 
             # Create IoU matrix for bipartite matching
             iou_matrix = np.zeros((len(pred_boxes), len(gt_boxes)))
+            raw_iou_matrix = np.zeros((len(pred_boxes), len(gt_boxes)))  # Store raw IoU values before thresholding
+
             for i, pred_box in enumerate(pred_boxes):
                 for j, gt_box in enumerate(gt_boxes):
-                    this_iou = iou(pred_box, gt_box)
+                    raw_iou = iou(pred_box, gt_box)
+                    raw_iou_matrix[i, j] = raw_iou
+
                     # Apply IoU thresholding
+                    this_iou = raw_iou
                     if this_iou < iou_threshold_low:
                         this_iou = 0.0
                     elif this_iou > iou_threshold_high:
@@ -184,19 +221,28 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
             # Find optimal assignment using Hungarian algorithm
             row_indices, col_indices = linear_sum_assignment(cost_matrix)
             matched_ious = [iou_matrix[i, j] for i, j in zip(row_indices, col_indices)]
+            raw_matched_ious = [raw_iou_matrix[i, j] for i, j in zip(row_indices, col_indices)]
+
+            # Store matching information
+            match_info["matches"] = list(zip(row_indices.tolist(), col_indices.tolist()))
+            match_info["match_ious"] = raw_matched_ious
 
             # Calculate reward - only continuous mode now
             if matched_ious:
                 # Just use the sum of all IoUs
                 reward = sum(matched_ious)
 
+            match_info["reward"] = reward
+
         except Exception as e:
-            # print(f"Error in multi_bbox_iou_reward: {e}")
+            print(f"Error in multi_bbox_iou_reward: {e}")
             pass
 
         rewards.append(reward)
+        matching_info.append(match_info)
 
     return rewards
+
 
 def format_reward(completions, **kwargs):
     """Reward function that checks if the completion has a specific format."""
@@ -288,7 +334,7 @@ training_args = GRPOConfig(
     # save_steps = 450,
     # max_grad_norm = 0.5, # need to be the same as the gradient clipping in zero3.json
     # gradient_checkpointing=True,
-    report_to = "none", # Can use Weights & Biases
+    report_to = "wandb", # Can use Weights & Biases
     output_dir = "outputs",
     deepspeed="zero3.json",
 )
