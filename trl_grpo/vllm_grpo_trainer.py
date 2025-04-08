@@ -402,7 +402,7 @@ class VisionGRPOVLLMTrainer(Trainer):
                         # This is particularly useful here because we generate completions from the same prompts.
                         enable_prefix_caching=True,
                         enforce_eager=True,
-                        max_model_len=args.max_completion_length,
+                        max_model_len=args.max_completion_length+args.max_prompt_length,
                     )
                 self.sampling_params = SamplingParams(
                     temperature=args.temperature,
@@ -490,7 +490,7 @@ class VisionGRPOVLLMTrainer(Trainer):
     ) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
         prompts = [x["prompt"] for x in inputs]
-        if not "image" in inputs:
+        if not "image" in inputs[0]:
             from qwen_vl_utils import process_vision_info
             images = [process_vision_info(x["prompt"])[0] for x in inputs]
         else:
@@ -674,6 +674,9 @@ class VisionGRPOVLLMTrainer(Trainer):
                     for key in inputs[0].keys()
                     if key not in ["prompt", "completion"]
                 }
+                # Add the rewards to the reward_kwargs for log_reward
+                reward_kwargs['rewards'] = {fn.__name__: rewards_per_func[:, i].cpu().tolist() for i, fn in enumerate(self.reward_funcs)}
+
                 for key in reward_kwargs:
                     for example in inputs:
                         # Repeat each value in the column for `num_generations` times
