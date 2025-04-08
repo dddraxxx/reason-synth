@@ -12,4 +12,6 @@ cuda_count=$(nvidia-smi -L | wc -l)
 
 datetime=$(date +%Y%m%d_%H%M%S)
 export LOG_PATH="logs/qwen2_5_grpo_${datetime}.jsonl"
-$cmd launch --num_processes $((cuda_count - 1)) qwen2_5_grpo.py
+export VLLM_DEVICE="cuda:7"
+vllm_device_count=$(echo $VLLM_DEVICE | tr ',' '\n' | wc -l)
+$cmd launch --num_processes $((cuda_count - vllm_device_count)) qwen2_5_grpo.py
