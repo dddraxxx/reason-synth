@@ -49,8 +49,10 @@ def convert_to_conversation(sample):
     ]
     return { "prompt" : conversation }
 convert_to_conversation(dataset[2])
+
 #%% Let's convert the dataset into the "correct" format for finetuning:
-converted_dataset = [convert_to_conversation(d) for d in dataset.select(range(100))]
+random_indices = random.sample(range(len(dataset)), 200)
+converted_dataset = [convert_to_conversation(dataset[i]) for i in random_indices]
 
 #%% We look at how the conversations are structured for the first example:
 converted_dataset[0]
@@ -85,14 +87,14 @@ peft_config = get_peft_config(model_config)
 
 training_args = GRPOConfig(
     use_vllm = True, # use vLLM for fast inference!
-    learning_rate = 5e-6,
+    learning_rate = 1e-6,
     weight_decay = 0.1,
     warmup_ratio = 0.1,
     lr_scheduler_type = "cosine",
     logging_steps = 1,
     bf16 = True,
     per_device_train_batch_size = 8,
-    gradient_accumulation_steps = 1, # Increase to 4 for smoother training
+    gradient_accumulation_steps = 2, # Increase to 4 for smoother training
     num_generations = 8, # Decrease if out of memory
     max_prompt_length = 256,
     max_completion_length = 512,
