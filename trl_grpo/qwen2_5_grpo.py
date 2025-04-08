@@ -25,7 +25,7 @@ Please find the corresponding bounding box for {referring_expression}.
 
 The image contains shapes (triangles, squares, or circles) of at most two sizes (small or large), colors (red, blue, green, yellow, purple, orange), and at most three styles (solid-filled, two-color split, or outlined).
 First output your reasoning process within <think> </think> tags and then output the answer, as JSON, within <answer> </answer> tags. The JSON should include the bounding box coordinates [x_min, y_min, x_max, y_max].
-If no matching shape is found, return "no match" in answer. If multiple shapes match, output all bounding boxes in answer.
+If no matching shape is found, return "not exist" in answer. If multiple shapes match, output all bounding boxes in answer.
 """
 
 conv_prompt = [
@@ -69,6 +69,13 @@ def iou(box1, box2):
     return float(inter)/union
 
 def iou_reward(completions, solution, iou_reward_type='cont', **kwargs):
+    """Extract bounding boxes from completions and compute IoU rewards against solution.
+
+    Args:
+        completions: List of completions, where each completion is a list of messages
+        solution: List of ground truth bounding boxes, where each element is a list of bbox coordinates [x_min, y_min, x_max, y_max]
+                  Can be empty list (no match) or contain multiple bboxes (multiple matches)
+    """
     contents = [completion[0]["content"] for completion in completions]
     rewards = []
     answer_tag_pattern = r'<answer>(.*?)</answer>'
@@ -95,6 +102,102 @@ def iou_reward(completions, solution, iou_reward_type='cont', **kwargs):
         rewards.append(reward)
     return rewards
 
+def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, **kwargs):
+    """Extract multiple bounding boxes from completions and compute IoU rewards against solution.
+    Uses bipartite matching to find optimal assignment between predicted and ground truth boxes.
+
+    Args:
+        completions: List of completions, where each completion is a list of messages
+        solution: List of lists of ground truth bounding boxes, where each inner list is a list of bbox coordinates
+                 [x_min, y_min, x_max, y_max] for each sample
+        iou_threshold_low: IoU values below this threshold will be set to 0
+        iou_threshold_high: IoU values above this threshold will be set to 1
+    """
+    import numpy as np
+    from scipy.optimize import linear_sum_assignment
+
+    contents = [completion[0]["content"] for completion in completions]
+    rewards = []
+    answer_tag_pattern = r'<answer>(.*?)</answer>'
+    bbox_pattern = r'\[(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*),\s*(\s*-?\d*\.?\d+\s*)\]'
+
+    for content, gt_boxes in zip(contents, solution):
+        reward = 0.0
+        try:
+            content_answer_match = re.search(answer_tag_pattern, content, re.DOTALL)
+            if not content_answer_match:
+                rewards.append(reward)
+                continue
+
+            content_answer = content_answer_match.group(1).strip()
+
+            # Check for "no match" response
+            if "not exist" in content_answer.lower():
+                # If ground truth also has no boxes, this is correct
+                if len(gt_boxes) == 0:
+                    reward = 1.0
+                rewards.append(reward)
+                continue
+
+            # Find all bounding boxes in the answer - now using re.DOTALL
+            all_bbox_matches = re.findall(bbox_pattern, content_answer, re.DOTALL)
+            if not all_bbox_matches:
+                # No boxes found in prediction
+                rewards.append(reward)
+                continue
+
+            # Convert matches to lists of coordinates
+            pred_boxes = []
+            for match in all_bbox_matches:
+                try:
+                    box = [int(float(match[0])), int(float(match[1])), int(float(match[2])), int(float(match[3]))]
+                    pred_boxes.append(box)
+                except ValueError:
+                    continue  # Skip malformed boxes
+
+            # Handle special cases
+            if len(pred_boxes) == 0 and len(gt_boxes) == 0:
+                reward = 1.0  # Both prediction and ground truth have no boxes
+                rewards.append(reward)
+                continue
+
+            if len(pred_boxes) == 0 or len(gt_boxes) == 0:
+                # One has boxes, the other doesn't
+                rewards.append(reward)  # reward stays 0
+                continue
+
+            # Create IoU matrix for bipartite matching
+            iou_matrix = np.zeros((len(pred_boxes), len(gt_boxes)))
+            for i, pred_box in enumerate(pred_boxes):
+                for j, gt_box in enumerate(gt_boxes):
+                    this_iou = iou(pred_box, gt_box)
+                    # Apply IoU thresholding
+                    if this_iou < iou_threshold_low:
+                        this_iou = 0.0
+                    elif this_iou > iou_threshold_high:
+                        this_iou = 1.0
+                    iou_matrix[i, j] = this_iou
+
+            # Convert to cost matrix (1 - IoU)
+            cost_matrix = 1 - iou_matrix
+
+            # Find optimal assignment using Hungarian algorithm
+            row_indices, col_indices = linear_sum_assignment(cost_matrix)
+            matched_ious = [iou_matrix[i, j] for i, j in zip(row_indices, col_indices)]
+
+            # Calculate reward - only continuous mode now
+            if matched_ious:
+                # Just use the sum of all IoUs
+                reward = sum(matched_ious)
+
+        except Exception as e:
+            # print(f"Error in multi_bbox_iou_reward: {e}")
+            pass
+
+        rewards.append(reward)
+
+    return rewards
+
 def format_reward(completions, **kwargs):
     """Reward function that checks if the completion has a specific format."""
     pattern = r"<think>.*?</think>\s*<answer>.*?\{.*\[\d+,\s*\d+,\s*\d+,\s*\d+\].*\}.*?</answer>"
@@ -102,36 +205,15 @@ def format_reward(completions, **kwargs):
     matches = [re.fullmatch(pattern, content, re.DOTALL) for content in completion_contents]
     return [1.0 if match else 0.0 for match in matches]
 
-def get_timestamp_log_path():
-    """
-    Get a log path with an index appended if the file already exists.
-    Returns the final log path to use.
-    """
-    base_log_path = os.getenv("LOG_PATH")
-    if not base_log_path:
-        return None
-
-    # Split the path into name and extension
-    base_name = os.path.splitext(base_log_path)[0]
-    ext = os.path.splitext(base_log_path)[1]
-
-    # Get timestamp
-    start_time = os.getenv("LOG_START_TIME", datetime.now().strftime("%Y%m%d_%H%M"))
-
-    # Create timestamped path
-    timestamped_path = f"{base_name}_{start_time}{ext}"
-
-    return timestamped_path
-
 save_file = False
 def log_reward(completions, solution, **kwargs):
     """Combined reward function that calculates all rewards and handles logging."""
     global save_file
-    if not os.getenv("DEBUG_MODE") == "true":
-        return [0 for _ in range(len(solution))]
     current_time = datetime.now().strftime("%d-%H-%M-%S-%f")
 
     # Use provided rewards
+    if "rewards" not in kwargs:
+        return [0 for _ in range(len(completions))]
     rewards_dict = kwargs["rewards"]
 
     # Log results if in debug mode
@@ -160,10 +242,11 @@ def log_reward(completions, solution, **kwargs):
             import wandb
             if wandb.run is not None:
                 wandb.save(log_path, policy="live")
-    return [0 for _ in range(len(solution))]
+    return [0 for _ in range(len(completions))]
 
 reward_funcs_registry = {
-    "accuracy": iou_reward,
+    # "accuracy": iou_reward,
+    "multi_box_accuracy": multi_bbox_iou_reward,
     "format": format_reward,
     "log": log_reward,
 }
@@ -174,14 +257,16 @@ from trl.trainer import GRPOConfig, GRPOTrainer, ModelConfig
 from vllm_grpo_trainer import VisionGRPOVLLMTrainer
 
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor, AutoTokenizer
-model = Qwen2_5_VLForConditionalGeneration.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
-processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
-tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
-
-model_config = ModelConfig(
+# model = Qwen2_5_VLForConditionalGeneration.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
+# processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
+# tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
+model = "Qwen/Qwen2.5-VL-3B-Instruct"
+model_config = dict(
     torch_dtype=torch.bfloat16,
     attn_implementation="flash_attention_2",
+    use_cache=True,
 )
+
 # peft_config = get_peft_config(model_config)
 peft_config = None
 
@@ -193,21 +278,23 @@ training_args = GRPOConfig(
     # lr_scheduler_type = "cosine",
     logging_steps = 1,
     bf16 = True,
-    per_device_train_batch_size = 8,
-    gradient_accumulation_steps = 2, # Increase to 4 for smoother training
-    num_generations = 8, # Decrease if out of memory
-    max_prompt_length = 1024,
-    max_completion_length = 1024,
+    per_device_train_batch_size = 4,
+    gradient_accumulation_steps = 4, # Increase to 4 for smoother training
+    num_generations = 4, # Decrease if out of memory
+    max_prompt_length = 1424,
+    max_completion_length = 700,
     num_train_epochs = 1, # Set to 1 for a full training run
     # max_steps = 450,
     # save_steps = 450,
     # max_grad_norm = 0.5, # need to be the same as the gradient clipping in zero3.json
+    # gradient_checkpointing=True,
     report_to = "none", # Can use Weights & Biases
     output_dir = "outputs",
     deepspeed="zero3.json",
 )
+training_args.model_init_kwargs = model_config
 
-
+#%%
 trainer = VisionGRPOVLLMTrainer(
     model = model,
     reward_funcs = list(reward_funcs_registry.values()),

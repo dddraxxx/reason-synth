@@ -148,7 +148,7 @@ class VisionGRPOVLLMTrainer(Trainer):
         # Models
         # Trained model
         model_init_kwargs = args.model_init_kwargs or {}
-        model_init_kwargs["attn_implementation"] = attn_implementation
+        model_init_kwargs["attn_implementation"] = args.model_init_kwargs.get("attn_implementation", attn_implementation)
         if isinstance(model, str):
             model_id = model
             torch_dtype = model_init_kwargs.get("torch_dtype")
@@ -674,13 +674,14 @@ class VisionGRPOVLLMTrainer(Trainer):
                     for key in inputs[0].keys()
                     if key not in ["prompt", "completion"]
                 }
-                # Add the rewards to the reward_kwargs for log_reward
-                reward_kwargs['rewards'] = {fn.__name__: rewards_per_func[:, i].cpu().tolist() for i, fn in enumerate(self.reward_funcs)}
-
                 for key in reward_kwargs:
                     for example in inputs:
                         # Repeat each value in the column for `num_generations` times
-                        reward_kwargs[key].extend([example[key]] * self.num_generations)
+                        reward_kwargs[key].extend([example[key]])
+
+                # Add the rewards to the reward_kwargs for log_reward
+                reward_kwargs['rewards'] = {fn.__name__: rewards_per_func[:, i].cpu().tolist() for i, fn in enumerate(self.reward_funcs)}
+
                 output_reward_func = reward_func(
                     prompts=prompts, completions=completions, **reward_kwargs
                 )
