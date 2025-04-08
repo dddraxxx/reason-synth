@@ -24,10 +24,10 @@ dataset[0]["prompt"]
 QUESTION_TEMPLATE = """
 Please find the corresponding bounding box for {referring_expression}.
 
-The image contains shapes (triangles, squares, or circles) of at most two sizes (small or large), colors (red, blue, green, yellow, purple, orange), and at most three styles (solid-filled, two-color split, or outlined).
 First output your reasoning process within <think> </think> tags and then output the answer, as JSON, within <answer> </answer> tags. The JSON should include the bounding box coordinates [x_min, y_min, x_max, y_max].
 If no matching shape is found, return "not exist" in answer. If multiple shapes match, output all bounding boxes in answer.
 """
+# The image contains shapes (triangles, squares, or circles) of at most two sizes (small or large), colors (red, blue, green, yellow, purple, orange), and at most three styles (solid-filled, two-color split, or outlined).
 
 conv_prompt = [
     {
