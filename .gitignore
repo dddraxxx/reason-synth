@@ -26,6 +26,7 @@ rotated_test/
 unsloth_compiled_cache/
 unsloth_cache/
 
+*.png
 __pycache__/
 wandb/
 logs/
