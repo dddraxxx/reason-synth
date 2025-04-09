@@ -320,7 +320,7 @@ peft_config = None
 
 training_args = GRPOConfig(
     use_vllm = True, # use vLLM for fast inference!
-    learning_rate = 2e-5,
+    learning_rate = 1e-5,
     # weight_decay = 0.1,
     warmup_ratio = 0.1,
     # lr_scheduler_type = "cosine",
@@ -335,7 +335,7 @@ training_args = GRPOConfig(
     num_train_epochs = 5, # Set to 1 for a full training run
     # max_steps = 450,
     # save_steps = 450,
-    # max_grad_norm = 0.5, # need to be the same as the gradient clipping in zero3.json
+    max_grad_norm = 1.0, # need to be the same as the gradient clipping in zero3.json
     gradient_checkpointing=True,
     report_to = "wandb", # Can use Weights & Biases
     output_dir = "outputs",
