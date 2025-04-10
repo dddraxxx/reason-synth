@@ -43,19 +43,25 @@ def process_item(item, base_dir):
         "prompt": sample_prompts.format(referring_expression=item["referring_expression"])
     }
 
+"""
+python upload_to_hf.py -r rs2/extreme_simple_dfs -d dddraxxx/reason_synth_extreme_simple_dfs
+"""
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Upload the Reason Synth dataset to Hugging Face")
-    parser.add_argument("--sample-limit", type=int, default=None,
+    parser.add_argument("--root-dir", '-r', type=str, default="",
+                        help="Root directory of the dataset (default: current directory)")
+    parser.add_argument("--sample-limit", '-l', type=int, default=None,
                         help="Limit the number of samples to process (default: no limit)")
-    parser.add_argument("--dataset-name", type=str, default="dddraxxx/reason_synth",
+    parser.add_argument("--dataset-name", '-d', type=str, default="dddraxxx/reason_synth",
                         help="Name of the dataset on HuggingFace (default: dddraxxx/reason_synth)")
-    parser.add_argument("--batch-size", type=int, default=1000,
+    parser.add_argument("--batch-size", '-b', type=int, default=1000,
                         help="Number of items to process in each batch (default: 1000)")
     args = parser.parse_args()
-
-    # Define paths
-    base_dir = Path(__file__).parent
+    if args.root_dir != "":
+        base_dir = Path(args.root_dir)
+    else:
+        base_dir = Path(__file__).parent
     annotations_dir = base_dir / "annotations"
 
     # Load referring expressions data
