@@ -4,6 +4,7 @@ import numpy as np
 import os
 os.environ["WANDB_PROJECT"] = "reason-synth"
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+RUN_NAME = "dfs_simple"
 import random
 import re
 import torch
@@ -16,7 +17,8 @@ from datetime import datetime
 
 #%%
 from datasets import load_dataset
-dataset = load_dataset("dddraxxx/reason_synth", split = "train")
+# dataset = load_dataset("dddraxxx/reason_synth", split = "train")
+dataset = load_dataset("dddraxxx/reason_synth_extreme_simple_dfs", split = "train")
 
 #%%
 dataset[0]["prompt"]
@@ -114,7 +116,7 @@ def iou_reward(completions, solution, iou_reward_type='cont', **kwargs):
     return rewards
 
 from scipy.optimize import linear_sum_assignment
-def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, **kwargs):
+def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, debug=False, **kwargs):
     """Extract multiple bounding boxes from completions and compute IoU rewards against solution.
     Uses bipartite matching to find optimal assignment between predicted and ground truth boxes.
 
@@ -220,17 +222,28 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
 
             # Find optimal assignment using Hungarian algorithm
             row_indices, col_indices = linear_sum_assignment(cost_matrix)
-            matched_ious = [iou_matrix[i, j] for i, j in zip(row_indices, col_indices)]
-            raw_matched_ious = [raw_iou_matrix[i, j] for i, j in zip(row_indices, col_indices)]
+
+            # Filter out matches with IoU=0
+            valid_matches = [(i, j) for i, j in zip(row_indices, col_indices) if iou_matrix[i, j] > 0]
+
+            matched_ious = [iou_matrix[i, j] for i, j in valid_matches]
+            raw_matched_ious = [raw_iou_matrix[i, j] for i, j in valid_matches]
 
             # Store matching information
-            match_info["matches"] = list(zip(row_indices.tolist(), col_indices.tolist()))
+            match_info["matches"] = valid_matches
             match_info["match_ious"] = raw_matched_ious
 
             # Calculate reward - only continuous mode now
             if matched_ious:
                 # Just use the sum of all IoUs
-                reward = sum(matched_ious)
+                sum_ious = sum(matched_ious)
+                penalty_unmatched = max(len(gt_boxes), len(pred_boxes))
+                reward_multiple = len(matched_ious)
+                reward = sum_ious / penalty_unmatched * reward_multiple
+
+                match_info["sum_ious"] = sum_ious
+                match_info["penalty_unmatched"] = penalty_unmatched
+                match_info["reward_multiple"] = reward_multiple
 
             match_info["reward"] = reward
 
@@ -241,7 +254,10 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
         rewards.append(reward)
         matching_info.append(match_info)
 
-    return rewards
+    if debug:
+        return rewards, matching_info
+    else:
+        return rewards
 
 
 def format_reward(completions, **kwargs):
@@ -338,6 +354,7 @@ training_args = GRPOConfig(
     max_grad_norm = 1.0, # need to be the same as the gradient clipping in zero3.json
     gradient_checkpointing=True,
     report_to = "wandb", # Can use Weights & Biases
+    run_name = RUN_NAME,
     output_dir = "outputs",
     deepspeed="zero3.json",
 )
