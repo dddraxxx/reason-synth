@@ -11,6 +11,9 @@ from pathlib import Path
 import textwrap
 from collections import defaultdict
 import datetime
+import sys
+import wandb
+from typing import List, Dict, Tuple, Optional, Any
 
 def parse_bbox_from_answer(answer_text):
     """Extract bounding box coordinates from the model's answer."""
@@ -44,6 +47,382 @@ def extract_answer_content(model_output):
     if match:
         return match.group(1).strip()
     return "No answer found"
+
+# --- W&B Helper Functions Start ---
+def get_run_steps(run) -> Tuple[int, int]:
+    """
+    Get the start and end global steps for a run by scanning its history for 'train/global_step'.
+
+    Args:
+        run: W&B run object
+
+    Returns:
+        tuple: (min_step, max_step)
+    """
+    min_step = float('inf')
+    max_step = float('-inf')
+    found_steps = False
+    step_key = 'train/global_step'  # Target the specific step key
+
+    try:
+        # Scan history for the 'train/global_step' column
+        print(f"    Scanning history for key: '{step_key}'...")
+        history = run.scan_history(keys=[step_key])
+
+        for row in history:
+            if step_key in row and row[step_key] is not None:  # Check for key and non-null value
+                step = row[step_key]
+                # Ensure step is numeric before comparison
+                if isinstance(step, (int, float)):
+                    min_step = min(min_step, step)
+                    max_step = max(max_step, step)
+                    found_steps = True
+
+        if found_steps:
+            # Ensure we return integers
+            return int(min_step), int(max_step)
+        else:
+            print(f"    Warning: Key '{step_key}' not found or had no numeric values in history for run {run.id}. Falling back.")
+            # Fallback if 'train/global_step' not found or empty
+            start_step = run.starting_step if hasattr(run, 'starting_step') else 0
+            end_step = run.step if hasattr(run, 'step') else 0  # Use default _step as fallback
+            end_step = max(start_step, end_step)
+            return start_step, end_step
+
+    except Exception as e:
+        print(f"    Error scanning history for '{step_key}' in run {run.id}: {e}. Falling back.")
+        # Fallback to basic attributes on error
+        start_step = run.starting_step if hasattr(run, 'starting_step') else 0
+        end_step = run.step if hasattr(run, 'step') else 0
+        end_step = max(start_step, end_step)
+        return start_step, end_step
+
+def get_matching_runs_and_files(api, run_path: Optional[str] = None, run_name: Optional[str] = None,
+                               jsonl_pattern: Optional[str] = None) -> List[Tuple[Any, List[Any]]]:
+    """
+    Find all runs and their matching JSONL files.
+
+    Args:
+        api: wandb.Api instance
+        run_path: Direct path to a run (entity/project/run_id), can include wildcards like 'entity/project/*'
+        run_name: Run name to filter by. Should be in entity/project/run_name format.
+        jsonl_pattern: Regex pattern to match specific jsonl files
+
+    Returns:
+        List of (run, matching_files) pairs
+    """
+    matching_runs_files = []
+
+    if run_path:
+        try:
+            # Check if run_path contains wildcards
+            if '*' in run_path:
+                # Split path and extract components
+                parts = run_path.split('/')
+                if len(parts) < 2:
+                    raise ValueError("Invalid run path format. Should be 'entity/project/run_id' (run_id can be a wildcard)")
+
+                entity = parts[0]
+                project = parts[1]
+                run_id_pattern = parts[2] if len(parts) > 2 else '*'
+
+                print(f"Searching for runs in {entity}/{project} with ID pattern: {run_id_pattern}")
+
+                # Convert wildcard to a regex pattern
+                run_id_regex = run_id_pattern.replace('*', '.*')
+
+                # Get all runs in the project
+                project_runs = api.runs(f"{entity}/{project}")
+                if not project_runs:
+                    raise FileNotFoundError(f"No runs found in project {entity}/{project}")
+
+                # Filter runs based on the pattern
+                matched_runs = []
+                for run in project_runs:
+                    if re.match(f"^{run_id_regex}$", run.id):
+                        matched_runs.append(run)
+
+                if not matched_runs:
+                    raise FileNotFoundError(f"No runs match the pattern '{run_id_pattern}' in {entity}/{project}")
+
+                print(f"Found {len(matched_runs)} matching runs")
+
+                # Process each matched run
+                for run in matched_runs:
+                    files = list(run.files())
+                    jsonl_files = [f for f in files if f.name.endswith('.jsonl')]
+
+                    if not jsonl_files:
+                        print(f"No JSONL files found in run {run.id}")
+                        continue
+
+                    # Apply pattern filter if provided
+                    if jsonl_pattern:
+                        pattern = re.compile(jsonl_pattern)
+                        matching_files = [f for f in jsonl_files if pattern.search(f.name)]
+                        if matching_files:
+                            matching_runs_files.append((run, matching_files))
+                            print(f"Found {len(matching_files)} files in run {run.id} matching pattern '{jsonl_pattern}'")
+                        else:
+                            print(f"No JSONL files in run {run.id} match pattern '{jsonl_pattern}'")
+                    else:
+                        matching_runs_files.append((run, jsonl_files))
+            else:
+                # Direct path to a specific run
+                print(f"Connecting to wandb run: {run_path}")
+                run = api.run(run_path)
+
+                # Get all JSONL files for this run
+                files = list(run.files())
+                jsonl_files = [f for f in files if f.name.endswith('.jsonl')]
+
+                if not jsonl_files:
+                    print(f"No JSONL files found in run {run.id}. Available files: {[f.name for f in files]}")
+                    return []
+
+                # Apply pattern filter if provided
+                if jsonl_pattern:
+                    pattern = re.compile(jsonl_pattern)
+                    matching_files = [f for f in jsonl_files if pattern.search(f.name)]
+                    if matching_files:
+                        matching_runs_files.append((run, matching_files))
+                        print(f"Found {len(matching_files)} files in run {run.id} matching pattern '{jsonl_pattern}'")
+                    else:
+                        print(f"No JSONL files in run {run.id} match pattern '{jsonl_pattern}'")
+                else:
+                    matching_runs_files.append((run, jsonl_files))
+
+        except ValueError as e:
+            raise ValueError(f"Error with run_path: {e}")
+
+    elif run_name:
+        # run_name should be in entity/project/run_name format
+        try:
+            # Parse entity and project from run_name
+            parts = run_name.split('/')
+            if len(parts) == 3:
+                entity_val, project_val, name_val = parts
+            else:
+                raise ValueError("run_name must be in format 'entity/project/run_name'")
+
+            # Query by run name approach
+            print(f"Connecting to wandb project: {entity_val}/{project_val}")
+            print(f"Searching for runs with name: {name_val}")
+
+            # Filter runs by name
+            runs = api.runs(f"{entity_val}/{project_val}", filters={"display_name": name_val})
+
+            if not runs:
+                raise FileNotFoundError(f"No runs found with name {name_val} in {entity_val}/{project_val}")
+
+            print(f"Found {len(runs)} runs with name: {name_val}")
+
+            # For each run, find matching JSONL files
+            for run in runs:
+                files = list(run.files())
+                jsonl_files = [f for f in files if f.name.endswith('.jsonl')]
+
+                if not jsonl_files:
+                    print(f"No JSONL files found in run {run.id}")
+                    continue
+
+                # Apply pattern filter if provided
+                if jsonl_pattern:
+                    pattern = re.compile(jsonl_pattern)
+                    matching_files = [f for f in jsonl_files if pattern.search(f.name)]
+                    if matching_files:
+                        matching_runs_files.append((run, matching_files))
+                        print(f"Found {len(matching_files)} files in run {run.id} matching pattern '{jsonl_pattern}'")
+                    else:
+                        print(f"No JSONL files in run {run.id} match pattern '{jsonl_pattern}'")
+                else:
+                    matching_runs_files.append((run, jsonl_files))
+        except ValueError as e:
+            raise ValueError(f"Error with run_name: {e}")
+
+    else:
+        raise ValueError("Either run_path or run_name must be provided")
+
+    return matching_runs_files
+
+def select_best_run_by_steps(run_file_pairs: List[Tuple[Any, List[Any]]]) -> Tuple[Any, List[Any], Optional[Tuple[int, int]]]:
+    """
+    Let the user select the best run from matching runs or automatically select if only one match.
+
+    Args:
+        run_file_pairs: List of (run, matching_files) pairs
+
+    Returns:
+        Tuple[run, matching_files, run_steps]: Selected run, its matching files, and run step range
+    """
+    if not run_file_pairs:
+        raise FileNotFoundError("No runs with matching JSONL files found")
+
+    # If only one run, use it automatically
+    if len(run_file_pairs) == 1:
+        best_run, best_files = run_file_pairs[0]
+        best_run_steps = get_run_steps(best_run)
+        print(f"Selected run: {best_run.name} ({best_run.id}) with step range {best_run_steps[0]}-{best_run_steps[1]}")
+        return best_run, best_files, best_run_steps
+
+    # Multiple runs found - let user choose
+    print(f"\nFound {len(run_file_pairs)} matching runs:")
+    print("-" * 100)
+    print(f"{'#':<3} {'Run Name':<30} {'Run ID':<9} {'Created':<16} {'Step Range':<15} {'Files':<10} {'Description'}")
+    print("-" * 100)
+
+    # Display runs with details
+    for i, (run, files) in enumerate(run_file_pairs):
+        step_range = get_run_steps(run)
+        step_str = f"{step_range[0]}-{step_range[1]}"
+
+        # Format created time to readable format
+        created_time = run.created_at if hasattr(run, 'created_at') else "N/A"
+
+        # Truncate and clean run name if too long
+        name_display = run.name[:27] + "..." if len(run.name) > 30 else run.name
+
+        # Get file count and names
+        file_str = f"{len(files)} files"
+
+        # Get and truncate description
+        description = run.description if hasattr(run, 'description') and run.description else "No description"
+        desc_display = description[:40] + "..." if len(description) > 40 else description
+
+        print(f"{i+1:<3} {name_display:<30} {run.id:<9} {created_time:<16} {step_str:<15} {file_str:<10} {desc_display}")
+
+    print("-" * 100)
+    print("Enter the number of the run you want to use, or:")
+    print("- Press 'd' + number to see details for a specific run (e.g., 'd2')")
+    print("- Press 'q' to quit")
+
+    # Let user choose
+    while True:
+        try:
+            selection = input(f"Your selection (1-{len(run_file_pairs)}, d#, or q): ").strip().lower()
+
+            # Check for quit command
+            if selection == 'q':
+                print("Exiting...")
+                sys.exit(0)
+
+            # Check for details command
+            if selection.startswith('d') and len(selection) > 1:
+                try:
+                    detail_idx = int(selection[1:]) - 1
+                    if 0 <= detail_idx < len(run_file_pairs):
+                        run_to_show, files_to_show = run_file_pairs[detail_idx]
+                        steps = get_run_steps(run_to_show)
+                        print(f"\n--- Detailed information for run #{detail_idx+1} ---")
+                        print(f"Name: {run_to_show.name}")
+                        print(f"ID: {run_to_show.id}")
+                        print(f"Project: {run_to_show.project}")
+                        print(f"Entity: {run_to_show.entity}")
+                        print(f"Created: {run_to_show.created_at if hasattr(run_to_show, 'created_at') else 'N/A'}")
+                        print(f"Step Range: {steps[0]}-{steps[1]}")
+                        print(f"Description: {run_to_show.description if hasattr(run_to_show, 'description') and run_to_show.description else 'No description'}")
+                        print(f"Tags: {', '.join(run_to_show.tags) if hasattr(run_to_show, 'tags') and run_to_show.tags else 'No tags'}")
+                        print(f"JSONL Files ({len(files_to_show)}):")
+                        for j, file in enumerate(files_to_show):
+                            print(f"  {j+1}. {file.name} ({file.size/1024/1024:.2f}MB)")
+                        print("---")
+                        continue
+                    else:
+                        print(f"Invalid run number. Please enter d1-d{len(run_file_pairs)}")
+                        continue
+                except ValueError:
+                    print(f"Invalid detail command. Use d1-d{len(run_file_pairs)}")
+                    continue
+
+            # Regular number selection
+            idx = int(selection) - 1
+            if 0 <= idx < len(run_file_pairs):
+                selected_run, selected_files = run_file_pairs[idx]
+                run_steps = get_run_steps(selected_run)
+                print(f"Selected run: {selected_run.name} ({selected_run.id}) with step range {run_steps[0]}-{run_steps[1]}")
+                return selected_run, selected_files, run_steps
+            else:
+                print(f"Invalid selection. Please enter a number between 1 and {len(run_file_pairs)}")
+        except ValueError:
+            print("Please enter a valid selection")
+
+def download_best_file(run: Any, files: List[Any], download_dir: Path) -> str:
+    """
+    Download the best file from the selected run.
+
+    Args:
+        run: W&B run object
+        files: List of file objects
+        download_dir: Directory to download to
+
+    Returns:
+        str: Path to downloaded file
+    """
+    # For now, just use the first matching file
+    selected_file = files[0]
+    local_path = download_dir / selected_file.name
+
+    # Download the file
+    print(f"Downloading {selected_file.name} from run {run.id}...")
+    selected_file.download(root=str(download_dir), replace=True)
+
+    print(f"Downloaded to {local_path}")
+    return str(local_path)
+
+def download_from_wandb(run_path: Optional[str] = None, run_name: Optional[str] = None,
+                       jsonl_pattern: Optional[str] = None) -> Tuple[str, Optional[Tuple[int, int]]]:
+    """
+    Download the debug log file from wandb run.
+
+    Args:
+        run_path (Optional[str]): Path to the wandb run (e.g., 'entity/project/run_id')
+        run_name (Optional[str]): Run name to filter by. Must be in format 'entity/project/run_name'
+        jsonl_pattern (Optional[str]): Regex pattern to match specific jsonl files.
+
+    Returns:
+        Tuple[str, Optional[Tuple[int, int]]]: (Path to the downloaded file, Run's full step range)
+    """
+    # Create download directory
+    download_dir = Path("./tmp/wandb_downloads")
+    download_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize API
+    api = wandb.Api()
+
+    try:
+        # 1. Find all runs with matching JSONL files
+        matching_runs_files = get_matching_runs_and_files(
+            api=api,
+            run_path=run_path,
+            run_name=run_name,
+            jsonl_pattern=jsonl_pattern
+        )
+
+        if not matching_runs_files:
+            if jsonl_pattern:
+                raise FileNotFoundError(f"No runs found with JSONL files matching pattern '{jsonl_pattern}'")
+            else:
+                raise FileNotFoundError("No runs found with JSONL files")
+
+        # 2. Select the best run
+        best_run, best_files, run_steps = select_best_run_by_steps(
+            run_file_pairs=matching_runs_files
+        )
+
+        # 3. Download the best file
+        local_path = download_best_file(
+            run=best_run,
+            files=best_files,
+            download_dir=download_dir
+        )
+
+        return local_path, run_steps
+
+    except Exception as e:
+        print(f"Error downloading from wandb: {e}")
+        raise
+
+# --- W&B Helper Functions End ---
 
 def visualize_grouped_samples(group_key, samples, image_dir, output_dir, global_step_map={}):
     """Visualize multiple samples with the same reference and image as a single grouped image."""
@@ -182,9 +561,26 @@ def visualize_grouped_samples(group_key, samples, image_dir, output_dir, global_
 
 def main():
     parser = argparse.ArgumentParser(description='Group and visualize GRPO results')
-    parser.add_argument('--jsonl_file', type=str,
-                        default='/mnt/localssd/reason-synth/trl_grpo/logs/qwen2_5_grpo_20250409_122101.jsonl',
-                        help='Path to the JSONL file with training results')
+    # Input source arguments
+    input_group = parser.add_argument_group('Input Source (Provide ONE)')
+    input_source = input_group.add_mutually_exclusive_group(required=True)
+    input_source.add_argument('--input', '-i', type=str,
+                        help='Path to the input JSONL file')
+    input_source.add_argument('--wandb-run', '-wr', type=str, default='*',
+                        help='Wandb run path (e.g., entity/project/run_id). Supports wildcards for run_id (e.g., entity/project/abc* or entity/project/*)')
+    input_source.add_argument('--run-name', type=str,
+                        help='Filter runs by name. Must be in format entity/project/run_name')
+
+    # W&B related arguments
+    wandb_group = parser.add_argument_group('W&B Options')
+    wandb_group.add_argument('--jsonl-pattern', type=str, default='jsonl',
+                        help='Regex pattern to match specific jsonl files in the run (optional)')
+    wandb_group.add_argument('--entity', type=str, default='iccv25_cost',
+                        help='Wandb entity (default: iccv25_cost)')
+    wandb_group.add_argument('--project', type=str, default='reason-synth',
+                        help='Wandb project (default: reason-synth)')
+
+    # Existing arguments
     parser.add_argument('--image_dir', type=str,
                         default='/mnt/localssd/reason-synth/rs1/images/',
                         help='Directory containing the images')
@@ -209,32 +605,79 @@ def main():
 
     args = parser.parse_args()
 
+    # --- Input Handling ---
+    input_path = None
+    effective_run_range = None
+
+    # Determine input_path based on provided arguments
+    if args.wandb_run or args.run_name:
+        print("Attempting to download JSONL from Weights & Biases...")
+        try:
+            # If run_path or run_name doesn't contain '/', use entity and project
+            run_path = args.wandb_run
+            if run_path and '/' not in run_path:
+                run_path = f"{args.entity}/{args.project}/{run_path}"
+
+            run_name = args.run_name
+            if run_name and '/' not in run_name:
+                run_name = f"{args.entity}/{args.project}/{run_name}"
+
+            input_path, effective_run_range = download_from_wandb(
+                run_path=run_path,
+                run_name=run_name,
+                jsonl_pattern=args.jsonl_pattern
+            )
+            print("--- W&B Download Summary ---")
+            print(f"Downloaded file path: {input_path}")
+            if effective_run_range:
+                print(f"Full run step range: {effective_run_range[0]}-{effective_run_range[1]}")
+            print("--------------------------")
+
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+    elif args.input:
+        input_path = args.input
+        print(f"Using local input file: {input_path}")
+    else:
+        # This case should not be reachable due to mutually_exclusive_group(required=True)
+        print("Error: No input source specified (--input, --wandb-run, or --run-name).")
+        sys.exit(1)
+
+    # --- End Input Handling ---
+
     # Create output directory if it doesn't exist
-    os.makedirs(args.output_dir, exist_ok=True)
-    print(f"Output directory: {args.output_dir}")
+    output_path = Path(args.output_dir)
+    output_path.mkdir(exist_ok=True)
+    print(f"Output directory: {output_path}")
 
     # Check if image directory exists
-    if not os.path.exists(args.image_dir):
-        print(f"Warning: Image directory {args.image_dir} does not exist")
+    image_dir_path = Path(args.image_dir)
+    if not image_dir_path.exists():
+        print(f"Warning: Image directory {image_dir_path} does not exist")
     else:
-        print(f"Image directory: {args.image_dir}")
+        print(f"Image directory: {image_dir_path}")
 
     # Check if JSONL file exists
-    if not os.path.exists(args.jsonl_file):
-        print(f"Error: JSONL file {args.jsonl_file} does not exist")
-        return
-    print(f"JSONL file: {args.jsonl_file}")
+    input_file_path = Path(input_path)
+    if not input_file_path.exists():
+        print(f"Error: Input file {input_file_path} does not exist (after potential download)")
+        sys.exit(1)
+    print(f"Using JSONL file: {input_file_path}")
 
     # Read JSONL file
     samples = []
     try:
-        with open(args.jsonl_file, 'r') as f:
+        with open(input_file_path, 'r') as f:
             for line in f:
                 samples.append(json.loads(line))
         print(f"Successfully loaded {len(samples)} samples from JSONL file")
     except Exception as e:
         print(f"Error loading JSONL file: {e}")
-        return
+        sys.exit(1)
 
     # Improved grouping logic
     # First, extract all unique image paths and reference texts
