@@ -78,13 +78,14 @@ class DFSExpressionHandler:
             "starting from the {col_alt_dir}, the {ordinal_col} object in the {ordinal_row} row {row_dir}",
         ]
 
-    def generate_dfs_referring_expressions(self, n: int = 10, min_grid: Tuple[int, int] = None, max_grid: Tuple[int, int] = None) -> List[Dict]:
+    def generate_dfs_referring_expressions(self, n: int = 10, min_grid: Tuple[int, int] = None, max_grid: Tuple[int, int] = None, reasoning_level: int = None) -> List[Dict]:
         """
         Generate a specified number of DFS (position-based) referring expressions.
         Args:
             n: Number of referring expressions to generate
             min_grid: Minimum grid size (rows, columns) to consider, defaults to (0, 0)
             max_grid: Maximum grid size (rows, columns) to consider, defaults to self.max_grid_size
+            reasoning_level: Specific reasoning level to generate expressions for, defaults to None (random)
         Returns:
             List of dictionaries containing:
                 - referring_expression: the formatted referring expression text
@@ -96,19 +97,59 @@ class DFSExpressionHandler:
         min_row, min_col = min_grid if min_grid else (0, 0)
         max_row, max_col = max_grid if max_grid else (self.max_rows - 1, self.max_cols - 1)
 
-        for _ in range(n):
+        expressions_generated = 0
+        max_attempts = n * 10  # Limit attempts to avoid infinite loops
+        attempts = 0
+
+        while expressions_generated < n and attempts < max_attempts:
+            attempts += 1
             template = random.choice(self.dfs_templates)
-            row = random.randint(min_row, max_row)  # Using 0-indexed grid positions
-            col = random.randint(min_col, max_col)  # Using 0-indexed grid positions
+
+            # If reasoning_level is specified, we need to find row and column that sum to the target level
+            if reasoning_level is not None:
+                # The user wants reasoning_level to be (display_row + display_col) - 2
+                # So, the target sum for display_row + display_col is reasoning_level + 2
+                target_display_sum = reasoning_level + 2
+
+                possible_rows = []
+                for r in range(min_row, max_row + 1):
+                    display_r = r + 1
+                    target_display_col = target_display_sum - display_r
+                    col = target_display_col - 1  # Convert to 0-indexed
+
+                    if min_col <= col <= max_col:
+                        possible_rows.append(r)
+
+                if not possible_rows:
+                    # If no combinations found for the requested level, skip or raise error?
+                    # For now, let's skip and hope we find enough in other attempts.
+                    # Consider adding a check after the loop if expressions_generated < n.
+                    continue
+
+                # Randomly select a valid row
+                row = random.choice(possible_rows)
+                # Calculate the corresponding column based on the target sum
+                display_row = row + 1
+                display_col = target_display_sum - display_row
+                col = display_col - 1  # Convert to 0-indexed
+            else:
+                # Random selection for row and column
+                row = random.randint(min_row, max_row)  # Using 0-indexed grid positions
+                col = random.randint(min_col, max_col)  # Using 0-indexed grid positions
+                display_row = row + 1
+                display_col = col + 1
+
+            # Calculate the final reasoning level based on the new definition
+            current_reasoning_level = (display_row + display_col) - 2
 
             # Get ordinals (adding 1 for human-readable numbers)
-            display_row = row + 1
-            display_col = col + 1
             ordinal_row = ORDINALS.get(display_row, f"{display_row}th")
             ordinal_col = ORDINALS.get(display_col, f"{display_col}th")
 
             # Select direction specifications based on template requirements
             row_dir = row_alt_dir = col_dir = col_alt_dir = "not defined"
+            row_dir_type = "not_applicable" # Default if not set
+            col_dir_type = "not_applicable" # Default if not set
             if "{row_dir}" in template:
                 row_dir = random.choice(DIRECTION_SPECS["row_from_top"])
                 row_dir_type = "row_from_top"
@@ -146,9 +187,17 @@ class DFSExpressionHandler:
                     "col_dir_type": col_dir_type,  # Direction type used for columns
                     "display_row": display_row,  # 1-indexed position for display
                     "display_col": display_col,  # 1-indexed position for display
-                }
+                },
+                # Use the newly defined reasoning level
+                "reasoning_level": current_reasoning_level
             }
             referring_expressions.append(expr_data)
+            expressions_generated += 1
+
+        # Check if enough expressions were generated, especially if a reasoning level was specified
+        if expressions_generated < n and reasoning_level is not None:
+            print(f"Warning: Only generated {expressions_generated}/{n} expressions for reasoning level {reasoning_level}. "
+                  f"Possible that no valid row/column combinations exist within the grid limits.")
 
         return referring_expressions
 
@@ -242,11 +291,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate DFS referring expression templates")
-    parser.add_argument("--count", type=int, default=5, help="Number of DFS expressions to generate")
+    parser.add_argument("--count", type=int, default=10, help="Number of DFS expressions to generate")
     parser.add_argument("--min_grid_row", type=int, default=0, help="Minimum grid row (0-indexed)")
     parser.add_argument("--min_grid_col", type=int, default=0, help="Minimum grid column (0-indexed)")
     parser.add_argument("--max_grid_row", type=int, default=7, help="Maximum grid row (0-indexed)")
     parser.add_argument("--max_grid_col", type=int, default=7, help="Maximum grid column (0-indexed)")
+    parser.add_argument("--reasoning_level", "-r", type=int, default=None, help="Specific reasoning level to target (sum of row and column positions)")
 
     args = parser.parse_args()
 
@@ -255,17 +305,21 @@ if __name__ == "__main__":
 
     print("=== DFS (Position-Based) Referring Expressions ===")
     print(f"Grid range: ({args.min_grid_row},{args.min_grid_col}) to ({args.max_grid_row},{args.max_grid_col})")
+    if args.reasoning_level:
+        print(f"Targeting reasoning level: {args.reasoning_level}")
 
     dfs_referring_expressions = handler.generate_dfs_referring_expressions(
         args.count,
         min_grid=(args.min_grid_row, args.min_grid_col),
-        max_grid=(args.max_grid_row, args.max_grid_col)
+        max_grid=(args.max_grid_row, args.max_grid_col),
+        reasoning_level=args.reasoning_level
     )
 
     for i, expr_data in enumerate(dfs_referring_expressions, 1):
         print(f"{i}. Expression: {expr_data['referring_expression']}")
         print(f"   Requirements: row={expr_data['target_requirements']['row']}, column={expr_data['target_requirements']['column']}")
         print(f"   Direction types: row={expr_data['target_requirements']['row_dir_type']}, column={expr_data['target_requirements']['col_dir_type']}")
+        print(f"   Reasoning Level: {expr_data['reasoning_level']}")
         print()
 
     print(f"\nTotal templates: {len(handler.dfs_templates)}")
