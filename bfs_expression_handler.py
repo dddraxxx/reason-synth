@@ -6,10 +6,9 @@ of BFS (attribute-based) referring expressions.
 """
 
 import copy
-from typing import Dict, List, Tuple, Optional, Union, Any, Set
+from typing import Dict, List, Tuple, Optional
 import random
-import itertools
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 # Constants (importing from existing constants)
 SHAPE_TYPES = ["circle", "triangle", "square"]
@@ -42,7 +41,7 @@ class BFSExpressionHandler:
     Requirements Logic:
     - Requirements are pre-computed during initialization
     - Each template has an associated list of requirement objects
-    - Special cases like "containing {color1} and {color2}" have multiple requirement objects
+    - Special cases like "only containing {color1} and {color2}" have multiple requirement objects
     """
 
     def __init__(self):
@@ -74,7 +73,7 @@ class BFSExpressionHandler:
         # Default case: just return the base requirement
         requirements = [base_req]
 
-        # Special case: templates with "containing {color1} and {color2}"
+        # Special case: templates with "only containing {color1} and {color2}"
         if "containing {color1} and {color2}" in template:
             # Create requirement for just color2
             color2_req = copy.deepcopy(base_req)
@@ -134,7 +133,7 @@ class BFSExpressionHandler:
             "color": [
                 self.template_with_requirements("the object containing {color1}"),
                 self.template_with_requirements("the object containing {color2}"),
-                self.template_with_requirements("the object containing {color1} and {color2}")
+                self.template_with_requirements("the object only containing {color1} and {color2}")
             ],
 
             # Size templates
@@ -163,7 +162,7 @@ class BFSExpressionHandler:
             "shape_color": [
                 self.template_with_requirements("the {shape_type} containing {color1}"),
                 self.template_with_requirements("the {shape_type} containing {color2}"),
-                self.template_with_requirements("the {shape_type} containing {color1} and {color2}")
+                self.template_with_requirements("the {shape_type} only containing {color1} and {color2}")
             ],
 
             "shape_size": [
@@ -189,7 +188,7 @@ class BFSExpressionHandler:
             "color_size": [
                 self.template_with_requirements("the {size} object containing {color1}"),
                 self.template_with_requirements("the {size} object containing {color2}"),
-                self.template_with_requirements("the {size} object containing {color1} and {color2}")
+                self.template_with_requirements("the {size} object only containing {color1} and {color2}")
             ],
 
             "color_style": {
@@ -226,7 +225,7 @@ class BFSExpressionHandler:
             "shape_color_size": [
                 self.template_with_requirements("the {size} {shape_type} containing {color1}"),
                 self.template_with_requirements("the {size} {shape_type} containing {color2}"),
-                self.template_with_requirements("the {size} {shape_type} containing {color1} and {color2}")
+                self.template_with_requirements("the {size} {shape_type} only containing {color1} and {color2}")
             ],
 
             "shape_color_style": {
@@ -299,7 +298,7 @@ class BFSExpressionHandler:
 
         # Create a flattened list of all templates for random selection
         self.all_templates = []
-        for pattern_key, value in self.template_patterns.items():
+        for _, value in self.template_patterns.items():
             if isinstance(value, dict):
                 # For style-specific templates, flatten all styles
                 for style_templates in value.values():
@@ -650,7 +649,7 @@ class BFSExpressionHandler:
 
         return expressions
 
-    def _create_expression(self, template_key, template, pre_computed_requirements, obj_info):
+    def _create_expression(self, _, template, pre_computed_requirements, obj_info):
         """
         Create a single expression dictionary from a template.
 

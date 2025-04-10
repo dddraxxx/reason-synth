@@ -202,8 +202,8 @@ def main():
                         help='Start sampling groups from this point in the timeline (0-1, default: 0.0)')
     parser.add_argument('--group_period_end', type=float, default=1.0,
                         help='End sampling groups at this point in the timeline (0-1, default: 1.0)')
-    parser.add_argument('--max_groups', type=int, default=5,
-                        help='Maximum number of groups to visualize (default: 5, use -1 for all)')
+    parser.add_argument('--max_groups', type=int, default=None,
+                        help='Maximum number of groups to visualize (default: None, meaning visualize all selected groups)')
     parser.add_argument('--debug', action='store_true',
                         help='Enable debug mode with more verbose output')
 
@@ -308,7 +308,7 @@ def main():
         group_keys = sampled_keys
 
     # Limit to max_groups if specified
-    if args.max_groups > 0 and len(group_keys) > args.max_groups:
+    if args.max_groups is not None and len(group_keys) > args.max_groups:
         print(f"Limiting visualization to {args.max_groups} groups out of {len(group_keys)}")
         group_keys = group_keys[:args.max_groups]
 
