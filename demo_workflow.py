@@ -198,5 +198,5 @@ if __name__ == "__main__":
     main()
 
 """
-python demo_workflow.py --output_dir rs1 --num_images 1000 --min_grid 3 --max_grid 8 --bfs_ratio_single_attr 0.3 --bfs_ratio_two_attr 0.4 --bfs_ratio_three_attr 0.2 --bfs_ratio_four_attr 0.1 --num_vis_samples 20 --seed 123 --sampling_existence_ratio 0.6 --sampling_dfs_ratio 0.6
+python demo_workflow.py --output_dir rs1 --num_images 1000 --min_grid 2 --max_grid 8 --bfs_ratio_single_attr 0.3 --bfs_ratio_two_attr 0.4 --bfs_ratio_three_attr 0.2 --bfs_ratio_four_attr 0.1 --num_vis_samples 20 --seed 123 --sampling_existence_ratio 0.6 --sampling_dfs_ratio 0.6
 """

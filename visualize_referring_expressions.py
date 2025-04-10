@@ -126,6 +126,10 @@ def visualize_referring_expression(entry: Dict, image_dir: str, ax=None, show: b
             # For dictionaries (older format)
             ax_subtitle += ", ".join(f"{k}={v}" for k, v in requirements.items())
 
+    # Add reasoning level information if available
+    if 'reasoning_level' in entry:
+        ax_subtitle += f"\nReasoning Level: {entry['reasoning_level']}"
+
     # Add category information if available
     if 'category' in entry and 'category_description' in entry:
         ax_subtitle += f"\nCategory: {entry['category']} - {entry['category_description']}"
@@ -199,6 +203,9 @@ def visualize_referring_expression(entry: Dict, image_dir: str, ax=None, show: b
     # Show or save the plot
     plt.subplots_adjust(left=0.05, right=0.95, bottom=0.1, top=0.9)
 
+    # Remove axis ticks and borders
+    ax.axis('off')
+
     if save_path:
         plt.savefig(save_path, bbox_inches='tight')
         print(f"Saved visualization to {save_path}")
@@ -244,6 +251,9 @@ def visualize_dataset_sample(dataset_path: str, image_dir: str, num_samples: int
         # Create a new figure for each sample
         fig, ax = plt.subplots(figsize=(10, 8))
 
+        # Remove axis ticks and borders
+        ax.axis('off')
+
         # Generate save path if needed
         save_path = None
         if save_dir:
@@ -276,6 +286,8 @@ def visualize_dataset_sample(dataset_path: str, image_dir: str, num_samples: int
                     entry, image_dir, axes[i], show=False,
                     no_assets=no_assets, bfs_handler=bfs_handler
                 )
+                # Remove axis ticks and borders
+                axes[i].axis('off')
 
         # Hide any unused subplots
         for i in range(len(samples), len(axes)):
