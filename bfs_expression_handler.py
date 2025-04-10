@@ -649,7 +649,7 @@ class BFSExpressionHandler:
 
         return expressions
 
-    def _create_expression(self, _, template, pre_computed_requirements, obj_info):
+    def _create_expression(self, template_key, template, pre_computed_requirements, obj_info):
         """
         Create a single expression dictionary from a template.
 
