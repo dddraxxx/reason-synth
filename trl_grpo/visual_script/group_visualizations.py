@@ -14,6 +14,10 @@ import datetime
 import sys
 import wandb
 from typing import List, Dict, Tuple, Optional, Any
+from colorama import Fore, Back, Style, init
+
+# Initialize colorama
+init(autoreset=True)
 
 def parse_bbox_from_answer(answer_text):
     """Extract bounding box coordinates from the model's answer."""
@@ -266,10 +270,10 @@ def select_best_run_by_steps(run_file_pairs: List[Tuple[Any, List[Any]]]) -> Tup
         return best_run, best_files, best_run_steps
 
     # Multiple runs found - let user choose
-    print(f"\nFound {len(run_file_pairs)} matching runs:")
-    print("-" * 100)
-    print(f"{'#':<3} {'Run Name':<30} {'Run ID':<9} {'Created':<16} {'Step Range':<15} {'Files':<10} {'Description'}")
-    print("-" * 100)
+    print(f"\n{Fore.CYAN}{Style.BRIGHT}Found {len(run_file_pairs)} matching runs:{Style.RESET_ALL}")
+    print(f"{Fore.BLUE}{'-' * 100}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}{'#':<3} {'Run Name':<30} {'Run ID':<9} {'Created':<16} {'Step Range':<15} {'Files':<10} {'Description'}{Style.RESET_ALL}")
+    print(f"{Fore.BLUE}{'-' * 100}{Style.RESET_ALL}")
 
     # Display runs with details
     for i, (run, files) in enumerate(run_file_pairs):
@@ -289,21 +293,23 @@ def select_best_run_by_steps(run_file_pairs: List[Tuple[Any, List[Any]]]) -> Tup
         description = run.description if hasattr(run, 'description') and run.description else "No description"
         desc_display = description[:40] + "..." if len(description) > 40 else description
 
-        print(f"{i+1:<3} {name_display:<30} {run.id:<9} {created_time:<16} {step_str:<15} {file_str:<10} {desc_display}")
+        # Alternate row colors for better readability
+        row_color = Fore.GREEN if i % 2 == 0 else Fore.WHITE
+        print(f"{row_color}{i+1:<3} {name_display:<30} {run.id:<9} {created_time:<16} {step_str:<15} {file_str:<10} {desc_display}")
 
-    print("-" * 100)
-    print("Enter the number of the run you want to use, or:")
-    print("- Press 'd' + number to see details for a specific run (e.g., 'd2')")
-    print("- Press 'q' to quit")
+    print(f"{Fore.BLUE}{'-' * 100}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Enter the number of the run you want to use, or:")
+    print(f"{Fore.MAGENTA}- Press {Fore.WHITE}{Style.BRIGHT}d{Fore.MAGENTA} + number to see details for a specific run (e.g., {Fore.WHITE}{Style.BRIGHT}d2{Style.RESET_ALL})")
+    print(f"{Fore.MAGENTA}- Press {Fore.WHITE}{Style.BRIGHT}q{Fore.MAGENTA} to quit{Style.RESET_ALL}")
 
     # Let user choose
     while True:
         try:
-            selection = input(f"Your selection (1-{len(run_file_pairs)}, d#, or q): ").strip().lower()
+            selection = input(f"{Fore.CYAN}{Style.BRIGHT}Your selection (1-{len(run_file_pairs)}, d#, or q): {Style.RESET_ALL}").strip().lower()
 
             # Check for quit command
             if selection == 'q':
-                print("Exiting...")
+                print(f"{Fore.RED}Exiting...{Style.RESET_ALL}")
                 sys.exit(0)
 
             # Check for details command
@@ -313,25 +319,26 @@ def select_best_run_by_steps(run_file_pairs: List[Tuple[Any, List[Any]]]) -> Tup
                     if 0 <= detail_idx < len(run_file_pairs):
                         run_to_show, files_to_show = run_file_pairs[detail_idx]
                         steps = get_run_steps(run_to_show)
-                        print(f"\n--- Detailed information for run #{detail_idx+1} ---")
-                        print(f"Name: {run_to_show.name}")
-                        print(f"ID: {run_to_show.id}")
-                        print(f"Project: {run_to_show.project}")
-                        print(f"Entity: {run_to_show.entity}")
-                        print(f"Created: {run_to_show.created_at if hasattr(run_to_show, 'created_at') else 'N/A'}")
-                        print(f"Step Range: {steps[0]}-{steps[1]}")
-                        print(f"Description: {run_to_show.description if hasattr(run_to_show, 'description') and run_to_show.description else 'No description'}")
-                        print(f"Tags: {', '.join(run_to_show.tags) if hasattr(run_to_show, 'tags') and run_to_show.tags else 'No tags'}")
-                        print(f"JSONL Files ({len(files_to_show)}):")
+                        print(f"\n{Fore.GREEN}{Style.BRIGHT}--- Detailed information for run #{detail_idx+1} ---{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Name: {Fore.WHITE}{run_to_show.name}")
+                        print(f"{Fore.YELLOW}ID: {Fore.WHITE}{run_to_show.id}")
+                        print(f"{Fore.YELLOW}Project: {Fore.WHITE}{run_to_show.project}")
+                        print(f"{Fore.YELLOW}Entity: {Fore.WHITE}{run_to_show.entity}")
+                        print(f"{Fore.YELLOW}Created: {Fore.WHITE}{run_to_show.created_at if hasattr(run_to_show, 'created_at') else 'N/A'}")
+                        print(f"{Fore.YELLOW}Step Range: {Fore.WHITE}{steps[0]}-{steps[1]}")
+                        print(f"{Fore.YELLOW}Description: {Fore.WHITE}{run_to_show.description if hasattr(run_to_show, 'description') and run_to_show.description else 'No description'}")
+                        print(f"{Fore.YELLOW}Tags: {Fore.WHITE}{', '.join(run_to_show.tags) if hasattr(run_to_show, 'tags') and run_to_show.tags else 'No tags'}")
+                        print(f"{Fore.YELLOW}JSONL Files ({len(files_to_show)}):{Style.RESET_ALL}")
                         for j, file in enumerate(files_to_show):
-                            print(f"  {j+1}. {file.name} ({file.size/1024/1024:.2f}MB)")
-                        print("---")
+                            file_color = Fore.CYAN if j % 2 == 0 else Fore.WHITE
+                            print(f"{file_color}  {j+1}. {file.name} ({file.size/1024/1024:.2f}MB)")
+                        print(f"{Fore.GREEN}{Style.BRIGHT}---{Style.RESET_ALL}")
                         continue
                     else:
-                        print(f"Invalid run number. Please enter d1-d{len(run_file_pairs)}")
+                        print(f"{Fore.RED}Invalid run number. Please enter d1-d{len(run_file_pairs)}{Style.RESET_ALL}")
                         continue
                 except ValueError:
-                    print(f"Invalid detail command. Use d1-d{len(run_file_pairs)}")
+                    print(f"{Fore.RED}Invalid detail command. Use d1-d{len(run_file_pairs)}{Style.RESET_ALL}")
                     continue
 
             # Regular number selection
@@ -339,12 +346,12 @@ def select_best_run_by_steps(run_file_pairs: List[Tuple[Any, List[Any]]]) -> Tup
             if 0 <= idx < len(run_file_pairs):
                 selected_run, selected_files = run_file_pairs[idx]
                 run_steps = get_run_steps(selected_run)
-                print(f"Selected run: {selected_run.name} ({selected_run.id}) with step range {run_steps[0]}-{run_steps[1]}")
+                print(f"{Fore.GREEN}{Style.BRIGHT}Selected run: {selected_run.name} ({selected_run.id}) with step range {run_steps[0]}-{run_steps[1]}{Style.RESET_ALL}")
                 return selected_run, selected_files, run_steps
             else:
-                print(f"Invalid selection. Please enter a number between 1 and {len(run_file_pairs)}")
+                print(f"{Fore.RED}Invalid selection. Please enter a number between 1 and {len(run_file_pairs)}{Style.RESET_ALL}")
         except ValueError:
-            print("Please enter a valid selection")
+            print(f"{Fore.RED}Please enter a valid selection{Style.RESET_ALL}")
 
 def download_best_file(run: Any, files: List[Any], download_dir: Path) -> str:
     """
@@ -563,7 +570,8 @@ def main():
     parser = argparse.ArgumentParser(description='Group and visualize GRPO results')
     # Input source arguments
     input_group = parser.add_argument_group('Input Source (Provide ONE)')
-    input_source = input_group.add_mutually_exclusive_group(required=True)
+    # input_source = input_group.add_mutually_exclusive_group(required=True)
+    input_source = input_group
     input_source.add_argument('--input', '-i', type=str,
                         help='Path to the input JSONL file')
     input_source.add_argument('--wandb-run', '-wr', type=str, default='*',
