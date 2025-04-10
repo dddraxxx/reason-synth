@@ -116,7 +116,7 @@ def iou_reward(completions, solution, iou_reward_type='cont', **kwargs):
     return rewards
 
 from scipy.optimize import linear_sum_assignment
-def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, **kwargs):
+def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, debug=False, **kwargs):
     """Extract multiple bounding boxes from completions and compute IoU rewards against solution.
     Uses bipartite matching to find optimal assignment between predicted and ground truth boxes.
 
@@ -236,10 +236,14 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
             # Calculate reward - only continuous mode now
             if matched_ious:
                 # Just use the sum of all IoUs
-                reward = sum(matched_ious)
+                sum_ious = sum(matched_ious)
                 penalty_unmatched = max(len(gt_boxes), len(pred_boxes))
                 reward_multiple = len(matched_ious)
-                reward = reward / penalty_unmatched * reward_multiple
+                reward = sum_ious / penalty_unmatched * reward_multiple
+
+                match_info["sum_ious"] = sum_ious
+                match_info["penalty_unmatched"] = penalty_unmatched
+                match_info["reward_multiple"] = reward_multiple
 
             match_info["reward"] = reward
 
@@ -250,7 +254,10 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
         rewards.append(reward)
         matching_info.append(match_info)
 
-    return rewards
+    if debug:
+        return rewards, matching_info
+    else:
+        return rewards
 
 
 def format_reward(completions, **kwargs):

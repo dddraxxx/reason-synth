@@ -15,8 +15,7 @@ def iou(box1, box2):
     union = (box1[2]-box1[0])*(box1[3]-box1[1]) + (box2[2]-box2[0])*(box2[3]-box2[1]) - inter
     return float(inter)/union
 
-# Define the multi_bbox_iou_reward function directly here for testing
-def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, **kwargs):
+def qwen_multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, debug=False, **kwargs):
     """Extract multiple bounding boxes from completions and compute IoU rewards against solution.
     Uses bipartite matching to find optimal assignment between predicted and ground truth boxes.
 
@@ -67,8 +66,8 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
             all_bbox_matches = re.findall(bbox_pattern, content_answer, re.DOTALL)
             if not all_bbox_matches:
                 # No boxes found in prediction
-                # if len(gt_boxes) == 0:
-                #     reward = 1.0  # Correctly predicted no boxes
+                if len(gt_boxes) == 0:
+                    reward = 1.0  # Correctly predicted no boxes
                 match_info["reward"] = reward
                 rewards.append(reward)
                 matching_info.append(match_info)
@@ -122,17 +121,28 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
 
             # Find optimal assignment using Hungarian algorithm
             row_indices, col_indices = linear_sum_assignment(cost_matrix)
-            matched_ious = [iou_matrix[i, j] for i, j in zip(row_indices, col_indices)]
-            raw_matched_ious = [raw_iou_matrix[i, j] for i, j in zip(row_indices, col_indices)]
+
+            # Filter out matches with IoU=0
+            valid_matches = [(i, j) for i, j in zip(row_indices, col_indices) if iou_matrix[i, j] > 0]
+
+            matched_ious = [iou_matrix[i, j] for i, j in valid_matches]
+            raw_matched_ious = [raw_iou_matrix[i, j] for i, j in valid_matches]
 
             # Store matching information
-            match_info["matches"] = list(zip(row_indices.tolist(), col_indices.tolist()))
+            match_info["matches"] = valid_matches
             match_info["match_ious"] = raw_matched_ious
 
             # Calculate reward - only continuous mode now
             if matched_ious:
                 # Just use the sum of all IoUs
-                reward = sum(matched_ious)
+                sum_ious = sum(matched_ious)
+                penalty_unmatched = max(len(gt_boxes), len(pred_boxes))
+                reward_multiple = len(matched_ious)
+                reward = sum_ious / penalty_unmatched * reward_multiple
+
+                match_info["sum_ious"] = sum_ious
+                match_info["penalty_unmatched"] = penalty_unmatched
+                match_info["reward_multiple"] = reward_multiple
 
             match_info["reward"] = reward
 
@@ -143,7 +153,14 @@ def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_thre
         rewards.append(reward)
         matching_info.append(match_info)
 
-    return rewards, matching_info
+    if debug:
+        return rewards, matching_info
+    else:
+        return rewards
+
+# Define a wrapper around the imported function to provide both rewards and matching_info
+def multi_bbox_iou_reward(completions, solution, iou_threshold_low=0.1, iou_threshold_high=0.9, **kwargs):
+    return qwen_multi_bbox_iou_reward(completions, solution, iou_threshold_low, iou_threshold_high, **kwargs, debug=True)
 
 def create_completion(content_text):
     """Helper function to create a completion object in the expected format"""
@@ -187,6 +204,13 @@ def visualize_matching(match_info, test_name=""):
 
     print(f"Final reward: {reward:.4f}")
 
+    # Print the new reward calculation details if they exist
+    if "penalty_unmatched" in match_info and "reward_multiple" in match_info and "sum_ious" in match_info:
+        print(f"Sum of IoUs: {match_info.get('sum_ious', 0):.4f}")
+        print(f"Penalty unmatched: {match_info.get('penalty_unmatched', 0)}")
+        print(f"Reward multiple: {match_info.get('reward_multiple', 0)}")
+        print(f"Formula: {match_info.get('sum_ious', 0):.4f} / {match_info.get('penalty_unmatched', 0)} * {match_info.get('reward_multiple', 0)}")
+
 def test_perfect_match():
     """Test case where predicted boxes perfectly match ground truth"""
     gt_boxes = [[10, 20, 30, 40], [50, 60, 70, 80]]
@@ -220,8 +244,8 @@ def test_perfect_match():
     """)
 
     # Test with continuous reward
-    _, match_info_same = multi_bbox_iou_reward([completion_same_order], [gt_boxes])
-    _, match_info_diff = multi_bbox_iou_reward([completion_diff_order], [gt_boxes])
+    rewards, match_info_same = multi_bbox_iou_reward([completion_same_order], [gt_boxes])
+    rewards, match_info_diff = multi_bbox_iou_reward([completion_diff_order], [gt_boxes])
 
     visualize_matching(match_info_same[0], "Perfect Match (Same Order)")
     visualize_matching(match_info_diff[0], "Perfect Match (Different Order)")
@@ -287,7 +311,7 @@ def test_partial_match():
     """)
 
     # Test all cases with continuous reward
-    _, match_infos = multi_bbox_iou_reward(
+    rewards, match_infos = multi_bbox_iou_reward(
         [completion_partial, completion_bad_box, completion_missing, completion_extra],
         [gt_boxes, gt_boxes, gt_boxes, gt_boxes]
     )
@@ -296,6 +320,14 @@ def test_partial_match():
     visualize_matching(match_infos[1], "Partial Match - One box perfect, one completely wrong")
     visualize_matching(match_infos[2], "Partial Match - Missing one box")
     visualize_matching(match_infos[3], "Partial Match - Extra box")
+
+    # Print the actual rewards to see the effect of the new reward calculation
+    print("\nNew reward calculation results:")
+    for i, (name, reward) in enumerate(zip(["Partial match", "Bad box", "Missing box", "Extra box"], rewards)):
+        print(f"{name} reward: {reward:.4f}")
+        if "penalty_unmatched" in match_infos[i] and "reward_multiple" in match_infos[i]:
+            print(f"  Penalty unmatched: {match_infos[i].get('penalty_unmatched', 0)}")
+            print(f"  Reward multiple: {match_infos[i].get('reward_multiple', 0)}")
 
 def test_iou_thresholding():
     """Test the IoU thresholding functionality"""
@@ -338,7 +370,7 @@ def test_iou_thresholding():
     gt_boxes = [[10, 20, 30, 40]]
 
     # Test all cases with thresholding
-    _, match_infos = multi_bbox_iou_reward(
+    rewards, match_infos = multi_bbox_iou_reward(
         [low_iou_completion, high_iou_completion, medium_iou_completion],
         [gt_boxes, gt_boxes, gt_boxes],
         iou_threshold_low=0.1,
@@ -348,6 +380,12 @@ def test_iou_thresholding():
     visualize_matching(match_infos[0], "IoU Thresholding - Very Low IoU (< 0.1)")
     visualize_matching(match_infos[1], "IoU Thresholding - Very High IoU (> 0.9)")
     visualize_matching(match_infos[2], "IoU Thresholding - Medium IoU (between thresholds)")
+
+    # Print the actual rewards
+    print("\nIoU thresholding reward results:")
+    print(f"Low IoU reward: {rewards[0]}")
+    print(f"High IoU reward: {rewards[1]}")
+    print(f"Medium IoU reward: {rewards[2]}")
 
 def test_re_dotall_flag():
     """Test that the re.DOTALL flag properly handles newlines in box coordinates"""
@@ -369,9 +407,12 @@ def test_re_dotall_flag():
     gt_boxes = [[10, 20, 30, 40]]
 
     # Test with re.DOTALL flag
-    _, match_infos = multi_bbox_iou_reward([newline_completion], [gt_boxes])
+    rewards, match_infos = multi_bbox_iou_reward([newline_completion], [gt_boxes])
 
     visualize_matching(match_infos[0], "re.DOTALL flag - Box with newlines between coordinates")
+
+    # Print the reward
+    print(f"\nNewline in coordinates reward: {rewards[0]}")
 
 def test_unequal_boxes():
     """Test handling of unequal numbers of boxes"""
@@ -402,13 +443,25 @@ def test_unequal_boxes():
     """)
 
     # Test handling of unequal boxes
-    _, match_infos = multi_bbox_iou_reward(
+    rewards, match_infos = multi_bbox_iou_reward(
         [fewer_boxes, more_boxes],
         [gt_boxes, gt_boxes]
     )
 
     visualize_matching(match_infos[0], "Unequal Boxes - Fewer boxes (2 vs 3)")
     visualize_matching(match_infos[1], "Unequal Boxes - More boxes (4 vs 3)")
+
+    # Print the rewards with more details
+    print("\nUnequal boxes reward results:")
+    print(f"Fewer boxes (2 vs 3) reward: {rewards[0]:.4f}")
+    if "penalty_unmatched" in match_infos[0] and "reward_multiple" in match_infos[0]:
+        print(f"  Penalty unmatched: {match_infos[0].get('penalty_unmatched', 0)}")
+        print(f"  Reward multiple: {match_infos[0].get('reward_multiple', 0)}")
+
+    print(f"More boxes (4 vs 3) reward: {rewards[1]:.4f}")
+    if "penalty_unmatched" in match_infos[1] and "reward_multiple" in match_infos[1]:
+        print(f"  Penalty unmatched: {match_infos[1].get('penalty_unmatched', 0)}")
+        print(f"  Reward multiple: {match_infos[1].get('reward_multiple', 0)}")
 
 def test_no_match_cases():
     """Test cases with no matches or no box provided"""
