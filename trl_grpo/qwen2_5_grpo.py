@@ -40,6 +40,7 @@ First output your reasoning process within <think> </think> tags and then output
 If no matching shape is found, return "not exist" in answer. If multiple shapes match, output all bounding boxes in answer.
 """
 # The image contains shapes (triangles, squares, or circles) of at most two sizes (small or large), colors (red, blue, green, yellow, purple, orange), and at most three styles (solid-filled, two-color split, or outlined).
+custom_configs["question_template"] = QUESTION_TEMPLATE
 
 conv_prompt = [
     {
