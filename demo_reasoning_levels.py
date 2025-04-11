@@ -308,10 +308,13 @@ def main():
 
             if expr_type == 'DFS':
                 dfs_levels[level] += 1
-                print(f"  - DFS Level {level}: {dfs_levels[level]}")
             elif expr_type == 'BFS':
                 bfs_levels[level] += 1
-                print(f"  - BFS Level {level}: {bfs_levels[level]}")
+
+        for level in sorted(dfs_levels.keys()):
+            print(f"  - DFS Level {level}: {dfs_levels[level]}")
+        for level in sorted(bfs_levels.keys()):
+            print(f"  - BFS Level {level}: {bfs_levels[level]}")
 
         # Visualize the distribution
         visualize_reasoning_level_distribution(expressions, visualization_dir, args.case)
@@ -328,5 +331,5 @@ if __name__ == "__main__":
     main()
 
 """
-python demo_reasoning_levels.py --case extreme_simple --num_images 1000 --min_grid 2 --max_grid 8 --num_vis_samples 20 --seed 123 --output_dir rs2
+python demo_reasoning_levels.py --case extreme_simple_dfs --num_images 1000 --min_grid 2 --max_grid 8 --num_vis_samples 20 --seed 123 --output_dir rs2
 """

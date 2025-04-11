@@ -13,8 +13,10 @@ class Scene:
         grid_size: Tuple[int, int],
         image_size: Tuple[int, int] = (800, 600),
         background_color: Tuple[int, int, int] = (240, 240, 240),
-        region_ratio_range: Tuple[float, float] = (0.5, 0.8),  # Min and max ratio of image to use for grid
+        cell_size: int = 70, # NEW: Base cell size
+        region_variation_ratio: float = 0.1, # NEW: Random variation ratio for region
         max_offset_ratio: float = 0.2,  # Maximum offset as a ratio of cell size
+        max_overlap_ratio: float = 0.1  # Renamed, default allows slight overlap
     ):
         """
         Initialize a scene with a grid of shapes.
@@ -23,26 +25,43 @@ class Scene:
             grid_size: Size of the grid (rows, columns)
             image_size: Size of the output image (width, height)
             background_color: Background color of the image
-            region_ratio_range: Range of ratios for random region size (min, max)
+            cell_size: Base size of a grid cell in pixels.
+            region_variation_ratio: Random variation (+/-) applied to the total region size calculated from cell_size and grid_size.
             max_offset_ratio: Maximum offset as a ratio of cell size
+            max_overlap_ratio: Max allowed overlap distance as a ratio of the smaller shape's bbox diagonal.
+                               0 means bounding circles just touch, >0 allows overlap.
         """
         self.grid_size = grid_size
         self.image_size = image_size
         self.background_color = background_color
-        self.region_ratio_range = region_ratio_range
+        self.max_overlap_ratio = max_overlap_ratio
         self.shapes: List[Shape] = []
         self.grid_positions: List[Tuple[int, int]] = []
         self.image = Image.new('RGB', image_size, background_color)
-        self.min_distance_ratio = 0.25  # Minimum distance as ratio of bbox size
 
-        # Select a random region size for the grid
-        min_ratio, max_ratio = region_ratio_range
-        width_ratio = np.random.uniform(min_ratio, max_ratio)
-        height_ratio = np.random.uniform(min_ratio, max_ratio)
+        # Add placement tracking stats
+        self.total_shapes_placed = 0
+        self.successful_placements = 0
+        self.total_attempts = 0
 
-        # Calculate region dimensions
-        region_width = int(image_size[0] * width_ratio)
-        region_height = int(image_size[1] * height_ratio)
+        rows, cols = grid_size
+        img_width, img_height = image_size
+
+        # Calculate base region size from cell size and grid
+        base_region_width = cols * cell_size
+        base_region_height = rows * cell_size
+
+        # Apply random variation
+        min_scale = 1.0 - region_variation_ratio
+        max_scale = 1.0 + region_variation_ratio
+        scale_factor = np.random.uniform(min_scale, max_scale)
+
+        region_width = int(base_region_width * scale_factor)
+        region_height = int(base_region_height * scale_factor)
+
+        # Clamp region size to image boundaries
+        region_width = min(region_width, img_width)
+        region_height = min(region_height, img_height)
 
         # Calculate random position for region
         max_x_offset = image_size[0] - region_width
@@ -50,12 +69,11 @@ class Scene:
         region_x = np.random.randint(0, max_x_offset + 1) if max_x_offset > 0 else 0
         region_y = np.random.randint(0, max_y_offset + 1) if max_y_offset > 0 else 0
 
-        # Calculate grid cell size
-        self.cell_width = region_width // grid_size[1]
-        self.cell_height = region_height // grid_size[0]
+        # Calculate actual grid cell size based on the final region size
+        self.cell_width = region_width // cols if cols > 0 else 0
+        self.cell_height = region_height // rows if rows > 0 else 0
 
-        # Calculate maximum offset to avoid overlap
-        # Use half the cell size as maximum possible offset
+        # Calculate maximum offset based on the *actual* cell size
         self.max_offset_x = int(self.cell_width * max_offset_ratio)
         self.max_offset_y = int(self.cell_height * max_offset_ratio)
 
@@ -67,27 +85,37 @@ class Scene:
         return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
 
     def _get_min_required_distance(self, shape1: Shape, shape2: Shape) -> float:
-        """Get minimum required distance between two shapes based on their bounding boxes."""
-        # Get bounding box dimensions
+        """Calculate the minimum required center distance based on max_overlap_ratio."""
         bbox1 = shape1.bbox
         bbox2 = shape2.bbox
+        if not bbox1 or not bbox2:
+            # Handle cases where bbox might not be calculated yet (shouldn't happen in normal flow)
+            return 0
 
-        # Calculate width and height of each bbox
         width1 = bbox1[2] - bbox1[0]
         height1 = bbox1[3] - bbox1[1]
         width2 = bbox2[2] - bbox2[0]
         height2 = bbox2[3] - bbox2[1]
 
-        # Calculate the diameter of each shape's bounding box
-        # For rotated shapes, this gives a better approximation
         diameter1 = math.sqrt(width1**2 + height1**2)
         diameter2 = math.sqrt(width2**2 + height2**2)
 
-        # Use the smaller object for the calculation (its bbox diagonal)
-        min_diameter = min(diameter1, diameter2)
+        # Use diameters as approximations for radii
+        radius1 = diameter1 / 2.0
+        radius2 = diameter2 / 2.0
 
-        # Return 1/4 of the minimum diameter
-        return min_diameter * self.min_distance_ratio
+        # The distance if bounding circles just touch
+        touching_distance = radius1 + radius2
+
+        # The maximum allowed overlap distance, scaled by the smaller shape
+        smaller_bbox_diagonal = min(diameter1, diameter2)
+        allowed_overlap_distance = smaller_bbox_diagonal * self.max_overlap_ratio
+
+        # Minimum required distance = touching distance - allowed overlap
+        min_req_dist = touching_distance - allowed_overlap_distance
+
+        # Distance cannot be negative
+        return max(0, min_req_dist)
 
     def _is_position_valid(self, shape: Shape, position: Tuple[int, int]) -> bool:
         """Check if a position is valid for a shape based on minimum distance constraint."""
@@ -140,7 +168,11 @@ class Scene:
         max_attempts = 20  # Limit attempts to avoid infinite loops
         valid_position_found = False
 
+        self.total_shapes_placed += 1
+        attempts_for_this_shape = 0
+
         for attempt in range(max_attempts):
+            attempts_for_this_shape += 1
             # Apply random offset (constrained to avoid overlap)
             # For rotated shapes, we reduce the maximum offset to account for larger bounding boxes
             offset_factor = 0.8 if is_rotated else 1.0
@@ -158,11 +190,20 @@ class Scene:
                 # Position is valid, set it and break the loop
                 shape.position = new_position
                 valid_position_found = True
+                self.successful_placements += 1
                 break
+
+        # Update total attempts stats
+        self.total_attempts += attempts_for_this_shape
 
         # If no valid position found after max attempts, use base position
         if not valid_position_found:
+            if os.environ.get('dp'):
+                print(f"\nFailed to find valid position for shape {shape.shape_type} at {grid_pos}, using base position\n")
             shape.position = (base_x, base_y)
+        else:
+            if os.environ.get('dp'):
+                print(f"Found valid position for shape {shape.shape_type} at {grid_pos}")
 
         # Update shape's bounding box with new position
         shape.bbox = shape._calculate_bbox()
@@ -264,3 +305,24 @@ class Scene:
         # Append to JSONL file
         with open(jsonl_file, 'a') as f:
             f.write(json.dumps(annotation) + '\n')
+
+    def get_placement_stats(self) -> Dict:
+        """Get statistics about shape placement attempts."""
+        if self.total_shapes_placed == 0:
+            success_rate = 0.0
+        else:
+            success_rate = (self.successful_placements / self.total_shapes_placed) * 100
+
+        if self.total_shapes_placed == 0:
+            avg_attempts = 0.0
+        else:
+            avg_attempts = self.total_attempts / self.total_shapes_placed
+
+        return {
+            "total_shapes": self.total_shapes_placed,
+            "successful_placements": self.successful_placements,
+            "failed_placements": self.total_shapes_placed - self.successful_placements,
+            "success_rate": success_rate,
+            "total_attempts": self.total_attempts,
+            "avg_attempts_per_shape": avg_attempts
+        }

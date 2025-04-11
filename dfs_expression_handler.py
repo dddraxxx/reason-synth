@@ -60,22 +60,22 @@ class DFSExpressionHandler:
             "the object in the {ordinal_row} row {row_alt_dir}, {ordinal_col} column {col_alt_dir}",
 
             # Variations on position references
-            "the {ordinal_col} object {col_dir} in the {ordinal_row} row {row_dir}",
-            "the {ordinal_col} object {col_alt_dir} in the {ordinal_row} row {row_dir}",
-            "the {ordinal_col} object {col_dir} in the {ordinal_row} row {row_alt_dir}",
-            "the {ordinal_col} object {col_alt_dir} in the {ordinal_row} row {row_alt_dir}",
+            # "the {ordinal_col} object {col_dir} in the {ordinal_row} row {row_dir}",
+            # "the {ordinal_col} object {col_alt_dir} in the {ordinal_row} row {row_dir}",
+            # "the {ordinal_col} object {col_dir} in the {ordinal_row} row {row_alt_dir}",
+            # "the {ordinal_col} object {col_alt_dir} in the {ordinal_row} row {row_alt_dir}",
 
-            # Alternative phrasing
-            "the shape in row {row_num} {row_dir}, column {col_num} {col_dir}",
-            "the shape in row {row_num} {row_alt_dir}, column {col_num} {col_dir}",
-            "the shape in row {row_num} {row_dir}, column {col_num} {col_alt_dir}",
-            "the shape in row {row_num} {row_alt_dir}, column {col_num} {col_alt_dir}",
+            # # Alternative phrasing
+            # "the shape in row {row_num} {row_dir}, column {col_num} {col_dir}",
+            # "the shape in row {row_num} {row_alt_dir}, column {col_num} {col_dir}",
+            # "the shape in row {row_num} {row_dir}, column {col_num} {col_alt_dir}",
+            # "the shape in row {row_num} {row_alt_dir}, column {col_num} {col_alt_dir}",
 
-            # Directional counting
-            "starting from the {row_dir}, the object in row {ordinal_row}, column {ordinal_col} {col_dir}",
-            "starting from the {row_alt_dir}, the object in row {ordinal_row}, column {ordinal_col} {col_alt_dir}",
-            "starting from the {col_dir}, the {ordinal_col} object in the {ordinal_row} row {row_alt_dir}",
-            "starting from the {col_alt_dir}, the {ordinal_col} object in the {ordinal_row} row {row_dir}",
+            # # Directional counting
+            # "{row_dir}, the object in row {ordinal_row}, column {ordinal_col} {col_dir}",
+            # "{row_alt_dir}, the object in row {ordinal_row}, column {ordinal_col} {col_alt_dir}",
+            # "{col_dir}, the {ordinal_col} object in the {ordinal_row} row {row_alt_dir}",
+            # "{col_alt_dir}, the {ordinal_col} object in the {ordinal_row} row {row_dir}",
         ]
 
     def generate_dfs_referring_expressions(self, n: int = 10, min_grid: Tuple[int, int] = None, max_grid: Tuple[int, int] = None, reasoning_level: int = None) -> List[Dict]:

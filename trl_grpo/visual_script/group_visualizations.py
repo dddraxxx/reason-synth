@@ -22,13 +22,13 @@ def parse_bbox_from_answer(answer_text):
     """Extract bounding box coordinates from the model's answer."""
     # Try to extract standard format [x_min, y_min, x_max, y_max]
     bbox_pattern = r'\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]'
-    matches = re.findall(bbox_pattern, answer_text)
+    matches = re.findall(bbox_pattern, answer_text, re.DOTALL)
     if matches:
         return [[int(x) for x in match] for match in matches]
 
     # Try to extract JSON format with "bbox_2d" key
     json_pattern = r'"bbox_2d":\s*\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]'
-    matches = re.findall(json_pattern, answer_text)
+    matches = re.findall(json_pattern, answer_text, re.DOTALL)
     if matches:
         return [[int(x) for x in match] for match in matches]
 
@@ -41,7 +41,7 @@ def extract_think_content(model_output):
     match = re.search(think_pattern, model_output, re.DOTALL)
     if match:
         return match.group(1).strip()
-    return "No reasoning found"
+    return model_output
 
 def extract_answer_content(model_output):
     """Extract the content within <answer> tags."""
@@ -373,7 +373,7 @@ def download_best_file(run: Any, files: List[Any], download_dir: Path) -> str:
     return str(local_path)
 
 def download_from_wandb(run_path: Optional[str] = None, run_name: Optional[str] = None,
-                       jsonl_pattern: Optional[str] = None) -> Tuple[str, Optional[Tuple[int, int]]]:
+                       jsonl_pattern: Optional[str] = None) -> Tuple[str, Optional[Tuple[int, int]], Optional[Dict]]:
     """
     Download the debug log file from wandb run.
 
@@ -383,7 +383,7 @@ def download_from_wandb(run_path: Optional[str] = None, run_name: Optional[str] 
         jsonl_pattern (Optional[str]): Regex pattern to match specific jsonl files.
 
     Returns:
-        Tuple[str, Optional[Tuple[int, int]]]: (Path to the downloaded file, Run's full step range)
+        Tuple[str, Optional[Tuple[int, int]], Optional[Dict]]: (Path to the downloaded file, Run's full step range, Run info)
     """
     # Create download directory
     download_dir = Path("./tmp/wandb_downloads")
@@ -412,6 +412,19 @@ def download_from_wandb(run_path: Optional[str] = None, run_name: Optional[str] 
             run_file_pairs=matching_runs_files
         )
 
+        # Extract runtime information
+        runtime_str = "unknown"
+        if hasattr(best_run, 'created_at'):
+            created_time = best_run.created_at
+            runtime_str = created_time
+
+        # Extract run info
+        run_info = {
+            'name': best_run.name,
+            'id': best_run.id,
+            'runtime': runtime_str
+        }
+
         # 3. Download the best file
         local_path = download_best_file(
             run=best_run,
@@ -419,7 +432,7 @@ def download_from_wandb(run_path: Optional[str] = None, run_name: Optional[str] 
             download_dir=download_dir
         )
 
-        return local_path, run_steps
+        return local_path, run_steps, run_info
 
     except Exception as e:
         print(f"Error downloading from wandb: {e}")
@@ -427,7 +440,7 @@ def download_from_wandb(run_path: Optional[str] = None, run_name: Optional[str] 
 
 # --- W&B Helper Functions End ---
 
-def visualize_grouped_samples(group_key, samples, image_dir, output_dir, global_step_map={}):
+def visualize_grouped_samples(group_key, samples, image_dir, output_dir, global_step_map={}, run_info=None):
     """Visualize multiple samples with the same reference and image as a single grouped image."""
     # Get image path from the first sample
     image_basename = os.path.basename(samples[0]['image_path'])
@@ -550,12 +563,27 @@ def visualize_grouped_samples(group_key, samples, image_dir, output_dir, global_
         axes[i].axis('off')
 
     # Save the visualization
-    os.makedirs(output_dir, exist_ok=True)
+    # Create a run-specific subdirectory if run_info is provided
+    if run_info and 'name' in run_info and 'id' in run_info:
+        # Include runtime if available
+        if 'runtime' in run_info and run_info['runtime']:
+            run_subdir = f"{run_info['name']}_{run_info['runtime']}_{run_info['id']}"
+        else:
+            run_subdir = f"{run_info['name']}_{run_info['id']}"
+        # Clean the run subdirectory name to be filesystem-friendly
+        run_subdir = re.sub(r'[^\w\-_]', '_', run_subdir)
+        # Create the full output path including the run subdirectory
+        full_output_dir = os.path.join(output_dir, run_subdir)
+    else:
+        full_output_dir = output_dir
+
+    os.makedirs(full_output_dir, exist_ok=True)
+
     # Create a safe filename from the group key
     safe_filename = re.sub(r'[^\w\-_]', '_', group_key)
     # Get the global step for this group
     global_step = global_step_map.get(group_key, 0)
-    output_path = os.path.join(output_dir, f"step_{global_step:04d}_group_{safe_filename}.png")
+    output_path = os.path.join(full_output_dir, f"step_{global_step:04d}_group_{safe_filename}.png")
     plt.savefig(output_path, bbox_inches='tight', dpi=150)
     plt.close()
 
@@ -586,7 +614,7 @@ def main():
 
     # Existing arguments
     parser.add_argument('--image_dir', type=str,
-                        default='../rs1/images/',
+                        default='../rs2/extreme_simple_dfs/images/',
                         help='Directory containing the images (relative to root_dir if no leading /)')
     parser.add_argument('--output_dir', type=str,
                         default='./grouped_visualizations',
@@ -594,11 +622,11 @@ def main():
     parser.add_argument('--group_by', type=str, default='image_and_ref',
                         choices=['image_only', 'image_and_ref'],
                         help='How to group samples: by image only or by image and reference text')
-    parser.add_argument('--sampling_freq', type=int, default=1,
+    parser.add_argument('--sampling_freq', '-sf', type=int, default=1,
                         help='Sample 1 out of N groups (default: 1, meaning keep all groups)')
-    parser.add_argument('--samples_in_group', type=int, default=None,
+    parser.add_argument('--samples_in_group', '-sig', type=int, default=None,
                         help='Number of samples to show in each group visualization (default: None, meaning show all)')
-    parser.add_argument('--group_period_start', '-gps', type=float, default=0.0,
+    parser.add_argument('--group_period_start', '-gps', type=float, default=0.9,
                         help='Start sampling groups from this point in the timeline (0-1, default: 0.0)')
     parser.add_argument('--group_period_end', '-gpe', type=float, default=1.0,
                         help='End sampling groups at this point in the timeline (0-1, default: 1.0)')
@@ -612,6 +640,7 @@ def main():
     # --- Input Handling ---
     input_path = None
     effective_run_range = None
+    run_info = None  # Store run name and ID information
 
     # Process relative paths
     if args.input and not args.input.startswith('/'):
@@ -642,15 +671,19 @@ def main():
             if run_name and '/' not in run_name:
                 run_name = f"{args.entity}/{args.project}/{run_name}"
 
-            input_path, effective_run_range = download_from_wandb(
+            # Get the information from W&B
+            input_path, effective_run_range, run_info = download_from_wandb(
                 run_path=run_path,
                 run_name=run_name,
                 jsonl_pattern=args.jsonl_pattern
             )
+
             print("--- W&B Download Summary ---")
             print(f"Downloaded file path: {input_path}")
             if effective_run_range:
                 print(f"Full run step range: {effective_run_range[0]}-{effective_run_range[1]}")
+            if run_info:
+                print(f"Run name: {run_info['name']}, ID: {run_info['id']}")
             print("--------------------------")
 
         except FileNotFoundError as e:
@@ -662,6 +695,13 @@ def main():
     elif args.input:
         input_path = args.input
         print(f"Using local input file: {input_path}")
+        # For local files, use current datetime as subdirectory name
+        current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_info = {
+            'name': 'local',
+            'id': current_time
+        }
+        print(f"Using timestamp as ID: {current_time}")
     else:
         # This case should not be reachable due to mutually_exclusive_group(required=True)
         print("Error: No input source specified (--input, --wandb-run, or --run-name).")
@@ -671,7 +711,7 @@ def main():
 
     # Create output directory if it doesn't exist
     output_path = Path(args.output_dir)
-    output_path.mkdir(exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
     print(f"Output directory: {output_path}")
 
     # Check if image directory exists
@@ -781,14 +821,26 @@ def main():
         group_samples = grouped_samples[group_key]
         print(f"Visualizing group {group_key} with {len(group_samples)} samples")
 
-        if visualize_grouped_samples(group_key, group_samples, args.image_dir, args.output_dir, global_step_map):
+        if visualize_grouped_samples(group_key, group_samples, args.image_dir, args.output_dir, global_step_map, run_info):
             successful_visualizations += 1
 
         # Print progress
         print(f"Processed {successful_visualizations}/{len(group_keys)} groups")
 
+    # Create a friendly display of where output is stored
+    if run_info:
+        # Include runtime if available
+        if 'runtime' in run_info and run_info['runtime']:
+            run_subdir = f"{run_info['name']}_{run_info['runtime']}_{run_info['id']}"
+        else:
+            run_subdir = f"{run_info['name']}_{run_info['id']}"
+        run_subdir = re.sub(r'[^\w\-_]', '_', run_subdir)
+        full_output_path = os.path.join(args.output_dir, run_subdir)
+    else:
+        full_output_path = args.output_dir
+
     print(f"Visualization complete. Successfully visualized {successful_visualizations}/{len(group_keys)} groups.")
-    print(f"Results saved to {args.output_dir}")
+    print(f"Results saved to {full_output_path}")
 
 if __name__ == "__main__":
     main()
