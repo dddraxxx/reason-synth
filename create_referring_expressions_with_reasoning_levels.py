@@ -570,8 +570,8 @@ def generate_referring_expressions_dataset(
                 total_images_processed += 1
 
                 # Print progress
-                if total_images_processed % 10 == 0:
-                    print(f"Processed {total_images_processed} images, generated {total_expressions} expressions")
+                # if total_images_processed % 10 == 0:
+                #     print(f"Processed {total_images_processed} images, generated {total_expressions} expressions")
 
     # Print summary
     print(f"\nDataset generation complete:")
