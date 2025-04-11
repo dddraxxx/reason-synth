@@ -19,7 +19,17 @@ from datetime import datetime
 from datasets import load_dataset
 # dataset = load_dataset("dddraxxx/reason_synth", split = "train")
 dataset = load_dataset("dddraxxx/reason_synth_extreme_simple_dfs", split = "train")
+custom_configs = {}
 
+#%%
+from pprint import pprint
+# pprint(dataset.info)
+# sample of dataset.info.download_checksums:
+#   download_checksums={'hf://datasets/dddraxxx/reason_synth_extreme_simple_dfs@9a4f3a0dc05d835924d317cdfeb5e873125c4bf2/data/train-00000-of-00001.parquet': {'checksum': None, ...
+# help me find git commit hash of this dataset
+git_commit_hash = re.search(r".*@(.*)/data/.*", list(dataset.info.download_checksums.keys())[0]).group(1)
+print("dataset git commit hash (for reproducibility): ", git_commit_hash)
+custom_configs["dataset_git_commit_hash"] = git_commit_hash
 #%%
 dataset[0]["prompt"]
 
@@ -334,7 +344,19 @@ model_config = dict(
 # peft_config = get_peft_config(model_config)
 peft_config = None
 
-training_args = GRPOConfig(
+from dataclasses import field, dataclass
+from typing import Optional
+
+@dataclass
+class CustomGRPOConfig(GRPOConfig):
+    dataset_git_commit_hash: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Git commit hash of the dataset"
+        }
+    )
+
+training_args = CustomGRPOConfig(
     use_vllm = True, # use vLLM for fast inference!
     learning_rate = 1e-5,
     # weight_decay = 0.1,
@@ -357,6 +379,7 @@ training_args = GRPOConfig(
     run_name = RUN_NAME,
     output_dir = "outputs",
     deepspeed="zero3.json",
+    dataset_git_commit_hash = custom_configs["dataset_git_commit_hash"],
 )
 training_args.model_init_kwargs = model_config
 
@@ -367,6 +390,7 @@ trainer = VisionGRPOVLLMTrainer(
     train_dataset = converted_dataset,
     args = training_args,
     peft_config = peft_config,
+    custom_configs = custom_configs,
 )
 #%%
 trainer_stats = trainer.train()

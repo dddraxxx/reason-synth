@@ -137,6 +137,7 @@ class VisionGRPOVLLMTrainer(Trainer):
         max_pixels: Optional[int] = 12845056,
         min_pixels: Optional[int] = 3136,
         attn_implementation: str = "flash_attention_2",
+        custom_configs: Optional[dict] = None,
     ):
 
         # Args
@@ -192,6 +193,11 @@ class VisionGRPOVLLMTrainer(Trainer):
                     "You passed `model_init_kwargs` to the `GRPOConfig`, but your model is already instantiated. "
                     "This argument can only be used when the `model` argument is a string."
                 )
+
+        # put custom configs in model.config
+        if custom_configs is not None:
+            for key, value in custom_configs.items():
+                setattr(model.config, key, value)
 
         if peft_config is not None:
             model = get_peft_model(model, peft_config)
